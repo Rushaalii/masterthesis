@@ -145,7 +145,7 @@ synthcontrol_donorpool$city <- as.numeric(synthcontrol_donorpool$city)
 #Change format of data frame (necessary for command dataprep)
 synthcontrol_donorpool <- as.data.frame(synthcontrol_donorpool)
 
-#For now (STILL HAVE TO ADAPT, WHY IS THAT???)
+#For now (STILL HAVE TO ADAPT @Nic, seems like the matching of the two tables (2005-2011,2012-2021 did not really work)
 cities_to_remove <- c(5, 7, 19, 22, 24, 35, 37, 40)
 synthcontrol_donorpool <- synthcontrol_donorpool[!synthcontrol_donorpool$city %in% cities_to_remove, ]
 
