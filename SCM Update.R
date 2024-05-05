@@ -22,6 +22,8 @@ setwd("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Pr
 
 synth_data <- read_csv("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/50SyntheticControlWomen.csv")
 
+
+
 #Add new variables (add poverty!!!)
 synth_data$married <- ifelse (synth_data$MARST <= 2, 1, 0)
 synth_data$white <- ifelse (synth_data$RACE == 1, 1, 0)
@@ -145,26 +147,28 @@ synthcontrol_donorpool$city <- as.numeric(synthcontrol_donorpool$city)
 #Change format of data frame (necessary for command dataprep)
 synthcontrol_donorpool <- as.data.frame(synthcontrol_donorpool)
 
-#For now (STILL HAVE TO ADAPT @Nic, seems like the matching of the two tables (2005-2011,2012-2021 did not really work)
+#For now (STILL HAVE TO ADAPT, WHY IS THAT???)
 cities_to_remove <- c(5, 7, 19, 22, 24, 35, 37, 40)
 synthcontrol_donorpool <- synthcontrol_donorpool[!synthcontrol_donorpool$city %in% cities_to_remove, ]
 
+synthcontrol_donorpool$city <- factor(synthcontrol_donorpool$Place.Name)
+synthcontrol_donorpool$city <- as.numeric(synthcontrol_donorpool$city)
 
 # Correct way to specify controls
-controls_identifier <- setdiff(unique(synthcontrol_donorpool$city), 23)
+controls_identifier <- setdiff(unique(synthcontrol_donorpool$city), 19)
 
-#New York City is no. 23
+#New York City is no. 19
 # Corrected dataprep function
 # Setting up the dataprep function correctly
-dataprep_out <-
+dataprep.out <-
   dataprep(
     foo = synthcontrol_donorpool,
-    predictors = c("age","married","white","black","hispanic","education","part_rate5_2007","part_rate5_2010"),
+    predictors = c("age","married","white","hispanic","black","education","part_rate5_2007"),
     predictors.op = "mean",
     dependent = "part_rate5",
     unit.variable = "city",
     time.variable = "YEAR",
-    treatment.identifier = 23,
+    treatment.identifier = 19,
     controls.identifier = controls_identifier,
     time.predictors.prior = 2006:2013,
     time.optimize.ssr = 2006:2013,
@@ -172,43 +176,159 @@ dataprep_out <-
     time.plot = 2006:2019
   )
 
-synth_out <- synth(dataprep_out)
+synth.out <- synth(dataprep.out)
+synth.tables <- synth.tab(dataprep.res = dataprep.out,
+                          synth.res    = synth.out
+)
 
-path.plot(synth.res = synth_out,
-          dataprep.res = dataprep_out,
+gaps <- dataprep.out$Y1plot - (dataprep.out$Y0plot %*% synth.out$solution.w)
+gaps[1:14, 1]
+gaps
+
+
+path.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
           tr.intake = 1990,
           Ylab = "Labor Force Participation",
           Xlab = "Year",
           Legend = c("NYC", "Synthetic NYC"),
           Main = "NYC vs Synthetic NYC")
 
-gaps.plot(synth.res = synth_out,
-          dataprep.res = dataprep_out,
+gaps.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
           tr.intake = 1990,
           Ylab = "Effect",
           Xlab = "Year",
           Main = " Gap between labor force participation in NYC and its synthetic version")
 
 
-synth.tables <- synth.tab(dataprep.res = dataprep_out,
-                          synth.res    = synth_out
+
+
+### Robustness Checks ### 
+#Backdating
+
+
+
+#Leave-one-out
+
+
+
+
+
+
+
+
+
+
+
+#Placebo Tests
+#Random City
+dataprep.out <-
+  dataprep(foo = synthcontrol_donorpool,
+           predictors = c("age","married","white","hispanic","black","education","part_rate5_2007") ,
+           predictors.op = "mean" ,
+           time.predictors.prior = 2006:2013 ,
+           dependent = "part_rate5",
+           unit.variable = "city",
+           time.variable = "YEAR",
+           treatment.identifier = 5, # Change the ID to other unit that did NOT receive the treatment
+           controls.identifier = c(1:4,6:18,20:33),
+           time.optimize.ssr = 2006:2013,
+           time.plot = 2006:2018
+  )
+
+synth.out <- synth(data.prep.obj = dataprep.out,
+                   method = "BFGS"
 )
 
+path.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Labor Force Participation",
+          Xlab = "Year",
+          Legend = c("Random", "Synthetic Random"),
+          Main = "Random City vs Synthetic random city")
 
-synth.tables$tab.pred
-
-#Composition weights predictor variables
-predictor.composition <-synth.tables$tab.v
-
-#Composition weigths Donorpool
-donorpool.composition <- synth.tables$tab.w
-
-
-
-
-
-
-
-
+gaps.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Effect",
+          Xlab = "Year",
+          Main = " Gap between labor force participation in random city and its synthetic version")
 
 
+
+##All Placebos###
+
+store <- matrix(NA,length(2006:2019),33)
+
+colnames(store) <- unique(synthcontrol_donorpool$city)
+
+# run placebo test
+for(iter in 2:33)
+{
+  dataprep.out <-
+    dataprep(foo = synthcontrol_donorpool,
+          predictors = c("age","married","white","hispanic","black","education","part_rate5_2007") ,
+           predictors.op = "mean" ,
+          time.predictors.prior = 2006:2013 ,
+          dependent = "part_rate5",
+          unit.variable = "city",
+          time.variable = "YEAR",
+          treatment.identifier = iter,
+          controls.identifier = c(2:33)[-iter+1],
+          time.optimize.ssr = 2006:2013,
+          time.plot = 2006:2019
+    )
+  # run synth
+  synth.out <- synth(
+    data.prep.obj = dataprep.out,
+    method = "BFGS"
+  )
+  
+  # store gaps
+  store[,iter-1] <- dataprep.out$Y1plot - (dataprep.out$Y0plot %*% synth.out$solution.w)
+}
+  
+
+# now do figure
+data <- store
+rownames(data) <- 2006:2019
+
+# Set bounds in gaps data
+gap.start     <- 1
+gap.end       <- nrow(data)
+years         <- 2006:2019
+gap.end.pre  <- which(rownames(data)=="2012")
+
+#  MSPE Pre-Treatment
+mse        <-             apply(data[ gap.start:gap.end.pre,]^2,2,mean)
+nyc.mse <- as.numeric(mse[19])
+# Exclude states with 5 times higher MSPE than basque
+data <- data[,mse<4*nyc.mse]
+Cex.set <- .75
+
+# Plot
+plot(years,data[gap.start:gap.end,which(colnames(data)=="19")],
+     ylim=c(-0.15,0.15),xlab="YEAR",
+     xlim=c(2006,2019),ylab="Gap in Labor Force Participation Rate",
+     type="l",lwd=2,col="black",
+     xaxs="i",yaxs="i")
+
+# Add lines for control states
+for (i in 1:ncol(data)) { lines(years,data[gap.start:gap.end,i],col="gray") }
+
+## Add Basque Line
+lines(years,data[gap.start:gap.end,which(colnames(data)=="19")],lwd=2,col="black")
+
+# Add grid
+abline(v=2014,lty="dotted",lwd=2)
+abline(h=0,lty="dashed",lwd=2)
+legend("bottomright",legend=c("New York City","Control Cities"),
+       lty=c(1,1),col=c("black","gray"),lwd=c(2,1),cex=.8)
+arrows(2013,-1.5,2014,-1.5,col="black",length=.1)
+text(2013,-1.5,"Introduction universal pre-k",cex=Cex.set)
+abline(v=2006)
+abline(v=2019)
+abline(h=-2)
+abline(h=2)
