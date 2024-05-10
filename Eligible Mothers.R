@@ -1,0 +1,501 @@
+#################################################
+### Elegible Mothers (4 y.o. children sample) ###
+#################################################
+library(raster)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(gridExtra)
+library(readr)
+library(data.table)
+library(Synth)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(xtable)
+library(openxlsx)
+
+#Sample Construction
+rm(list = ls()) 
+
+setwd("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs")
+data <- read_csv("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/100SyntheticControl_reduced.csv.gz")
+
+#1. Include all possibly eligible children: Include all 3y.o (born in 4th quarter), 4y.o., 5y.o.
+data <- data[data$AGE %in% c(3,4,5),]
+data <- data[!(data$AGE == 3 & data$BIRTHQTR %in% c(1,2,3)),]
+
+#2. Remove children currently enrolled in kindergarten
+data <- data[data$EDUCD != 012,]
+
+
+data$laborforce <- ifelse(data$LABFORCE_MOM == 2, 1, ifelse(data$LABFORCE_MOM == 1, 0, NA))
+data$employment <- ifelse(data$EMPSTAT_MOM == 1, 1, ifelse(data$EMPSTAT_MOM == c(2,3), 0, NA))
+data$fulltime <- ifelse(data$UHRSWORK_MOM >= 30, 1, 0)
+data$no.children <- ifelse(data$NCHILD_MOM >= 4, 4, data$NCHILD_MOM)
+data$race <- ifelse(data$RACE_MOM >= 3, 3, data$RACE_MOM)
+data$married <- ifelse (data$MARST_MOM <= 2, 1, 0)
+data$white <- ifelse (data$RACE_MOM == 1, 1, 0)
+data$black <- ifelse (data$RACE_MOM == 2, 1, 0)
+data <- data %>% mutate(
+  education = case_when(
+    EDUCD_MOM <= 061 ~ 1,
+    EDUCD_MOM <= 064 ~ 2,
+    EDUC_MOM <= 100 ~ 3,
+    TRUE ~ 4
+  )
+)
+
+#Income brackets: Below poverty treshold, 100-300% of poverty treshold, 300% or more of poverty treshold (Household Income!)
+data <- data %>% mutate(
+  hhincome = case_when(
+    POVERTY_MOM <= 100 ~ 1,
+    POVERTY_MOM <= 500 ~ 2,
+    TRUE ~ 3
+  )
+)
+
+# Data Loading and Cleaning
+geographicdata2012 <- read.xlsx("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/New York City/2012-2021 PUMAS Cities.xlsx", sheet = 1)
+geographicdata2012$PUMA <- sub("^0", "", geographicdata2012$PUMA)
+geographicdata2012$Place.Name <- ifelse(geographicdata2012$Place.Name == "Nashville-Davidson metropolitan government (balance)", "Nashville-Davidson (balance)", geographicdata2012$Place.Name)
+geographicdata2012$X13 <- NULL
+geographicdata2005 <- read.xlsx("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/New York City/2005-2011 PUMAS Citites.xlsx", sheet = 1)
+geographicdata2005$PUMA <- sub("^0", "", geographicdata2005$PUMA)
+
+# Keeping only cities with >500'000 population and >75% PUMA zone coverage
+cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 0.75)
+cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 0.75)
+
+# Keeping only cities in 2012 that had >500'000 population in year 2000.
+metropolitan_cities <- unique(cities2005donorpool$Place.Name)
+cities2012donorpool <- subset(cities2012donorpool, Place.Name %in% metropolitan_cities)
+
+# Removing cities with major pre-K policies
+major_preK <- c("Washington city", "Baltimore city", "Jacksonville city", "Oklahoma City city", "Milwaukee city", "Fort Worth city", "Austin city", "Boston city")
+cities2005donorpool <- subset(cities2005donorpool, !(Place.Name %in% major_preK))
+cities2012donorpool <- subset(cities2012donorpool, !(Place.Name %in% major_preK))
+
+# Extract PUMA codes
+pumas2005donorpool <- cities2005donorpool$PUMA
+pumas2012donorpool <- cities2012donorpool$PUMA
+donorpool <- data[(data$PUMA %in% pumas2005donorpool & data$YEAR < 2012) | (data$PUMA %in% pumas2012donorpool & data$YEAR >= 2012),]
+
+#Donorpool
+donorpool$PUMA <- as.character(donorpool$PUMA)
+cities2005donorpool$PUMA <- as.character(cities2005donorpool$PUMA)
+
+#Add Cities 
+donorpool <- bind_rows(
+  donorpool %>% 
+    filter(YEAR <= 2011) %>%
+    left_join(dplyr::select(cities2005donorpool, PUMA, Place.Name), by = "PUMA", relationship = "many-to-many"),
+  
+  donorpool %>% 
+    filter(YEAR >= 2012) %>%
+    left_join(dplyr::select(cities2012donorpool, PUMA, Place.Name), by = "PUMA", relationship = "many-to-many")
+)
+
+donorpool$nyc <- ifelse(donorpool$Place.Name == "New York city",1,0)
+
+nyc <- donorpool[donorpool$Place.Name == "New York city",]
+not_nyc <- donorpool[!(donorpool$Place.Name == "New York city"),]
+
+
+###Checks###
+table(donorpool$YEAR, donorpool$Place.Name)
+table(donorpool$married, donorpool$YEAR, donorpool$Place.Name)
+
+################################################################################
+#Comparison NYC vs all other cities in Donorpool#
+################################################################################
+
+
+cities <- donorpool %>%
+  group_by(YEAR, Place.Name) %>%
+  summarise(
+    emp_rate = sum(EMPSTAT_MOM == 1, na.rm = TRUE) / sum(EMPSTAT_MOM %in% c(1, 2), na.rm = TRUE),
+    hours = mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = sum(EMPSTAT_MOM == 1 & fulltime == 1, na.rm = TRUE) / 
+      sum(EMPSTAT_MOM == 1 & (fulltime == 0 | fulltime == 1), na.rm = TRUE),
+    part_rate = sum(LABFORCE_MOM == 2, na.rm = TRUE) / 
+      sum(LABFORCE_MOM %in% c(1, 2), na.rm = TRUE),
+    income = mean(INCTOT_MOM[INCTOT_MOM > 0], na.rm = TRUE),
+    .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise 
+  )
+
+cities <- cities %>%
+  mutate(Region = "Singe Region")
+
+
+cities_not_nyc <- not_nyc %>%
+  group_by(YEAR) %>%
+  summarise(
+    emp_rate = sum(EMPSTAT_MOM == 1, na.rm = TRUE) / sum(EMPSTAT_MOM %in% c(1, 2), na.rm = TRUE),
+    hours = mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = sum(EMPSTAT_MOM == 1 & fulltime == 1, na.rm = TRUE) / 
+      sum(EMPSTAT_MOM == 1 & (fulltime == 0 | fulltime == 1), na.rm = TRUE),
+    part_rate = sum(LABFORCE_MOM == 2, na.rm = TRUE) / 
+      sum(LABFORCE_MOM %in% c(1, 2), na.rm = TRUE),
+    income = mean(INCTOT_MOM[INCTOT_MOM > 0], na.rm = TRUE),
+    .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
+  )
+
+cities_not_nyc <- cities_not_nyc %>%
+  mutate(Region = "Average without NYC")
+
+
+cities_nyc <- nyc %>%
+  group_by(YEAR) %>%
+  summarise(
+    emp_rate = sum(EMPSTAT_MOM == 1, na.rm = TRUE) / sum(EMPSTAT_MOM %in% c(1, 2), na.rm = TRUE),
+    hours = mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = sum(EMPSTAT_MOM == 1 & fulltime == 1, na.rm = TRUE) / 
+      sum(EMPSTAT_MOM == 1 & (fulltime == 0 | fulltime == 1), na.rm = TRUE),
+    part_rate = sum(LABFORCE_MOM == 2, na.rm = TRUE) / 
+      sum(LABFORCE_MOM %in% c(1, 2), na.rm = TRUE),
+    income = mean(INCTOT_MOM[INCTOT_MOM > 0], na.rm = TRUE),
+    .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
+  )
+
+cities_not_nyc <- cities_not_nyc %>%
+  mutate(Region = "NYC")
+
+cities <- bind_rows(cities_nyc, cities_not_nyc)
+
+#Plot graphs
+plot_part_rate <- ggplot(data = cities) +
+  geom_line(aes(x = YEAR, y = part_rate, color = Region)) +  
+  labs(x = "Year", y = "Participation Rate", color = "Region") +
+  ggtitle("Participation Rate of Mothers with children = 4yo") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(min(cities$YEAR), max(cities$YEAR), by = 1))
+print(plot_part_rate)
+
+plot_emp_rate <- ggplot(data = cities) +
+  geom_line(aes(x = YEAR, y = emp_rate, color = Region)) +
+  labs(x = "Year", y = "") +
+  ggtitle("Employment Rate of Mothers with children = 4yo") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(min(cities$YEAR), max(cities$YEAR), by = 1))
+plot(plot_emp_rate)
+
+plot_inc <- ggplot(data = cities) +
+  geom_line(aes(x = YEAR, y = income, color = Region)) +
+  labs(x = "Year", y = "") +
+  ggtitle("Wage Income of Employed Mothers with Children = 4yo") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(min(nyc$YEAR), max(nyc$YEAR), by = 1))
+plot(plot_inc)
+
+plot_hours <- ggplot(data = cities) +
+  geom_line(aes(x = YEAR, y = hours, color = Region)) +
+  labs(x = "Year", y = "") +
+  ggtitle("Hours Worked of Employed Mothers with Children = 4yo") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(min(nyc$YEAR), max(nyc$YEAR), by = 1))
+plot(plot_hours)
+
+plot_fulltime <- ggplot(data = cities) +
+  geom_line(aes(x = YEAR, y = fulltime, color = Region)) +
+  labs(x = "Year", y = "") +
+  ggtitle("Fulltime Share of Employed Mothers with Children = 4yo") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(min(cities$YEAR), max(cities$YEAR), by = 1))
+plot(plot_fulltime)
+
+grid.arrange(plot_part_rate, plot_emp_rate, plot_inc, plot_hours,ncol=2)
+
+
+################################################################################
+#Comparison NYC vs other cities by EDUCATION
+################################################################################
+
+# #By education
+# nyc_education <- nyc %>%
+#   group_by(YEAR, education) %>%
+#   summarise(
+#     emp_rate = sum(EMPSTAT == 1) / sum(EMPSTAT %in% c(1, 2)),
+#     hours = mean(UHRSWORK[EMPSTAT == 1]),
+#     fulltime = sum(EMPSTAT == 1 & fulltime == 1) / sum(EMPSTAT == 1 & (fulltime == 0 | fulltime == 1)),
+#     part_rate = sum(LABFORCE == 2) / sum(LABFORCE %in% c(1, 2)),
+#     income =  mean(INCWAGE[INCWAGE > 0])
+#   )
+# 
+# nyc_education <- nyc_education %>%
+#   mutate(Region = "Average without NYC")
+# 
+# not_nyc_education <- not_nyc %>%
+#   group_by(YEAR, education, nyc) %>%
+#   summarise(
+#     emp_rate = sum(EMPSTAT == 1) / sum(EMPSTAT %in% c(1, 2)),
+#     hours = mean(UHRSWORK[EMPSTAT == 1]),
+#     fulltime = sum(EMPSTAT == 1 & fulltime == 1) / sum(EMPSTAT == 1 & (fulltime == 0 | fulltime == 1)),
+#     part_rate = sum(LABFORCE == 2) / sum(LABFORCE %in% c(1, 2)),
+#     income =  mean(INCWAGE[INCWAGE > 0])
+#   )
+# not_nyc_education <- not_nyc_education %>%
+#   mutate(Region = "Average without NYC")
+# 
+# cities_education <- bind_rows(nyc_education, not_nyc_education)
+# 
+# 
+# cities_education <- donorpool %>%
+#   group_by(YEAR, education, nyc) %>%
+#   summarise(
+#     emp_rate = sum(EMPSTAT == 1) / sum(EMPSTAT %in% c(1, 2)),
+#     hours = mean(UHRSWORK[EMPSTAT == 1]),
+#     fulltime = sum(EMPSTAT == 1 & fulltime == 1) / sum(EMPSTAT == 1 & (fulltime == 0 | fulltime == 1)),
+#     part_rate = sum(LABFORCE == 2) / sum(LABFORCE %in% c(1, 2)),
+#     income =  mean(INCWAGE[INCWAGE > 0])
+#   )
+# 
+# 
+# #Plots
+# plot_part_rate_education <- ggplot(data = not_nyc_education) +
+#   geom_line(aes(x = YEAR, y = part_rate, color = education)) +
+#   facet_wrap(~ nyc) +  # Separate plots based on 'nyc'
+#   labs(x = "Year", y = "Participation Rate", color = "Education") +
+#   ggtitle("Participation Rate of Women with Children < 5 y.o. by Education Level and NYC Status") +
+#   theme_minimal() +
+#   scale_x_continuous(breaks = seq(min(not_nyc_education$YEAR), max(not_nyc_education$YEAR), by = 1))
+# 
+# plot(plot_part_rate_education)
+# 
+# plot_emp_rate_education <- ggplot(data = donorpool_education) +
+#   geom_line(aes(x = YEAR, y = emp_rate, color = education)) +
+#   facet_wrap(~ nyc) +  # Separate plots based on 'nyc'
+#   labs(x = "Year", y = "Employment Rate", color = "Education") +
+#   ggtitle("Employment Rate of Women with Children < 5 y.o. by Education Level and NYC Status") +
+#   theme_minimal() +
+#   scale_x_continuous(breaks = seq(min(donorpool_education$YEAR), max(donorpool_education$YEAR), by = 1))
+# 
+# plot(plot_emp_rate_education)
+# 
+# 
+# plot_inc_education <- ggplot(data = donorpool_education) +
+#   geom_line(aes(x = YEAR, y = income, color = education)) +
+#   facet_wrap(~ nyc) +  # Separate plots based on 'nyc'
+#   labs(x = "Year", y = "Income", color = "Education") +
+#   ggtitle("Income of Women with Children < 5 y.o. by Education Level and NYC Status") +
+#   theme_minimal() +
+#   scale_x_continuous(breaks = seq(min(donorpool_education$YEAR), max(donorpool_education$YEAR), by = 1))
+# 
+# plot(plot_inc_education)
+# 
+# 
+# plot_hours_education <- ggplot(data = donorpool_education) +
+#   geom_line(aes(x = YEAR, y = hours, color = education)) +
+#   facet_wrap(~ nyc) +  # Separate plots based on 'nyc'
+#   labs(x = "Year", y = "Hours Worked", color = "Education") +
+#   ggtitle("Hours Worked of Women with Children < 5 y.o. by Education Level and NYC Status") +
+#   theme_minimal() +
+#   scale_x_continuous(breaks = seq(min(donorpool_education$YEAR), max(donorpool_education$YEAR), by = 1))
+# 
+# plot(plot_hours_education)
+# 
+# plot_fulltime_education <- ggplot(data = donorpool_education) +
+#   geom_line(aes(x = YEAR, y = fulltime, color = education)) +
+#   facet_wrap(~ nyc) +  # Separate plots based on 'nyc'
+#   labs(x = "Year", y = "Employment Rate", color = "Education") +
+#   ggtitle("Fulltime Share of Women with Children < 5 y.o. by Education Level and NYC Status") +
+#   theme_minimal() +
+#   scale_x_continuous(breaks = seq(min(donorpool_education$YEAR), max(donorpool_education$YEAR), by = 1))
+# 
+# plot(plot_fulltime_education)
+# 
+# grid.arrange(plot_part_rate_education, plot_emp_rate_education, plot_inc_education, plot_hours_education,ncol=2)
+# 
+# 
+
+
+
+#
+#
+#
+
+########################################
+#Synthetic Control for eligible Women###
+########################################
+
+
+#Run regressions for donorpool add hispanic
+model1 <- lm(laborforce ~ NCHILD_MOM + NCHLT5_MOM + AGE_MOM + EDUC_MOM + married + white + black , data = donorpool)
+summary(model1)
+
+#Create necessary variables: 
+#Shares by cities 
+
+#Share married
+#Average age
+#Average education (maybe adjust and create binary variables)
+#Share white mothers
+#Share black mothers
+#Share hispanic mothers
+
+
+synthcontrol_donorpool <- donorpool_synthcontrol %>%
+  group_by(Place.Name, YEAR) %>%
+  filter(married == 0,na.rm = TRUE) %>% #Delete/Change
+  summarise(
+    married = mean(married, na.rm = TRUE),
+    white = mean(white, na.rm = TRUE),
+    black = mean(black, na.rm = TRUE),
+    #hispanic = mean(hispanic, na.rm = TRUE),
+    share_hsdropout = sum(education == 1) / sum(education %in% c(1, 2,3,4)),
+    share_hsgraduate = sum(education == 2) / sum(education %in% c(1, 2,3,4)),
+    share_somecollege = sum(education == 3) / sum(education %in% c(1, 2,3,4)),
+    share_min_bachelor = sum(education == 4) / sum(education %in% c(1, 2,3,4)),
+    education = mean(EDUC, na.rm = TRUE),
+    age = mean(AGE, na.rm = TRUE),
+    part_rate = sum(LABFORCE_MOM == 2, na.rm = TRUE) / 
+      sum(LABFORCE_MOM %in% c(1, 2), na.rm = TRUE),
+    emp_rate = sum(EMPSTAT_MOM == 1, na.rm = TRUE) / 
+      sum(EMPSTAT_MOM %in% c(1, 2), na.rm = TRUE),
+    hours = mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = mean(fulltime, na.rm = TRUE),
+    no_children = mean(no.children, na.rm = TRUE),
+    .groups = "drop"  
+  )
+
+
+#Include lags
+
+#2012
+part_rate_2012 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2012) %>%
+  dplyr::select(Place.Name, part_rate_2012 = part_rate)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(part_rate_2012, by = "Place.Name")
+
+hours_2012 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2012) %>%
+  dplyr::select(Place.Name, hours_2012 = hours)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(hours_2012, by = "Place.Name")
+
+
+#2010
+part_rate_2010 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2010) %>%
+  dplyr::select(Place.Name, part_rate_2010 = part_rate)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(part_rate_2010, by = "Place.Name")
+
+hours_2010 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2010) %>%
+  dplyr::select(Place.Name, hours_2010 = hours)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(hours_2010, by = "Place.Name")
+
+
+#2007 values and creating a new dataframe to merge back
+part_rate_2007 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2007) %>%
+  dplyr::select(Place.Name, part_rate_2007 = part_rate)  # Renaming the column for clarity
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(part_rate_2007, by = "Place.Name")
+
+hours_2007 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2007) %>%
+  dplyr::select(Place.Name, hours_2007 = hours)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(hours_2007, by = "Place.Name")
+
+
+# Now, convert this factor to integers
+synthcontrol_donorpool$city <- factor(synthcontrol_donorpool$Place.Name)
+synthcontrol_donorpool$city <- as.numeric(synthcontrol_donorpool$city)
+
+#Change format of data frame (necessary for command dataprep)
+synthcontrol_donorpool <- as.data.frame(synthcontrol_donorpool)
+
+# For now (DROP CHARLOTTE: STILL HAVE TO ADAPT, WHY IS THAT???)
+cities_to_remove <- 1
+synthcontrol_donorpool <- synthcontrol_donorpool[!synthcontrol_donorpool$city %in% cities_to_remove, ]
+
+
+
+synthcontrol_donorpool$city <- factor(synthcontrol_donorpool$Place.Name)
+synthcontrol_donorpool$city <- as.numeric(synthcontrol_donorpool$city)
+
+synthcontrol_donorpool2020 <- synthcontrol_donorpool[synthcontrol_donorpool$YEAR <= 2020,]
+synthcontrol_donorpool2020 <- as.data.frame(synthcontrol_donorpool2020)
+
+
+# Correct way to specify controls
+controls_identifier <- setdiff(unique(synthcontrol_donorpool$city), 11)
+controls_identifier2020 <- setdiff(unique(synthcontrol_donorpool2020$city), 11)
+
+#New York City is no. 19
+# Corrected dataprep function
+# Setting up the dataprep function correctly
+dataprep.out <-
+  dataprep(
+    foo = synthcontrol_donorpool2020,
+    predictors = c("age","white","black","share_hsdropout","share_hsgraduate","share_somecollege","hours_2012","hours2010","hours2007"), #add "hispanic"
+    predictors.op = "mean",
+    dependent = "hours",
+    unit.variable = "city",
+    time.variable = "YEAR",
+    treatment.identifier = 11,
+    controls.identifier = controls_identifier2020,
+    time.predictors.prior = 2006:2014,
+    time.optimize.ssr = 2006:2014,
+    unit.names.variable = "Place.Name",  
+    time.plot = 2006:2019
+  )
+
+synth.out <- synth(dataprep.out)
+synth.tables <- synth.tab(dataprep.res = dataprep.out,
+                          synth.res    = synth.out
+)
+
+gaps <- dataprep.out$Y1plot - (dataprep.out$Y0plot %*% synth.out$solution.w)
+gaps[1:14, 1]
+gaps
+
+synth.tables$tab.w
+synth.tables$tab.v
+
+path.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Labor Force Participation",
+          Xlab = "Year",
+          Legend = c("NYC", "Synthetic NYC"),
+          Main = "NYC vs Synthetic NYC")
+
+gaps.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Effect",
+          Xlab = "Year",
+          Main = " Gap between labor force participation in NYC and its synthetic version")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
