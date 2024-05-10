@@ -21,6 +21,10 @@ rm(list = ls())
 setwd("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs")
 data <- read_csv("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/100SyntheticControl_reduced.csv.gz")
 
+#Drop duplicates!!!
+data <- data %>%
+  distinct(SERIAL, YEAR, .keep_all = TRUE)
+
 #1. Include all possibly eligible children: Include all 3y.o (born in 4th quarter), 4y.o., 5y.o.
 data <- data[data$AGE %in% c(3,4,5),]
 data <- data[!(data$AGE == 3 & data$BIRTHQTR %in% c(1,2,3)),]
