@@ -120,46 +120,6 @@ table(donorpool$married, donorpool$YEAR, donorpool$Place.Name)
 ################################################################################
 #Comparison NYC vs all other cities in Donorpool#
 ################################################################################
-# 
-# # Create the survey design object, assuming 'weights' is the name of the weighting variable
-# design <- svydesign(ids = ~1, data = donorpool, weights = ~PERWT)
-# 
-# # Calculate summaries for each group
-# cities <- svyby(~EMPSTAT_MOM + UHRSWORK_MOM + fulltime + LABFORCE_MOM + INCWAGE_MOM, 
-#                 ~YEAR + Place.Name, 
-#                 design, 
-#                 FUN = function(subdata) {
-#                   data.frame(
-#                     emp_rate = svymean(as.integer(EMPSTAT_MOM == 1), subdata, na.rm = TRUE),
-#                     hours = svymean(UHRSWORK_MOM[EMPSTAT_MOM == 1], subdata, na.rm = TRUE),
-#                     fulltime = svyratio(~(EMPSTAT_MOM == 1 & fulltime == 1), ~(EMPSTAT_MOM == 1 & (fulltime == 0 | fulltime == 1)), subdata, na.rm = TRUE),
-#                     part_rate = svyratio(~(LABFORCE_MOM == 2), ~(LABFORCE_MOM %in% c(1, 2)), subdata, na.rm = TRUE),
-#                     income = svymean(INCWAGE_MOM[INCWAGE_MOM > 0], subdata, na.rm = TRUE)
-#                   )
-#                 },
-#                 na.rm = TRUE,
-#                 deff = FALSE)
-# 
-# # To format the results as a data frame for easier use:
-# cities <- as.data.frame(cities)
-
-
-
-
-# cities <- donorpool %>%
-#   group_by(YEAR, Place.Name) %>%
-#   summarise(
-#     emp_rate = mean(employment, na.rm = TRUE),
-#     hours = mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-#     fulltime = sum(EMPSTAT_MOM == 1 & fulltime == 1, na.rm = TRUE) / 
-#       sum(EMPSTAT_MOM == 1 & (fulltime == 0 | fulltime == 1), na.rm = TRUE),
-#     part_rate = sum(LABFORCE_MOM == 2, na.rm = TRUE) / 
-#       sum(LABFORCE_MOM %in% c(1, 2), na.rm = TRUE),
-#     income = mean(INCWAGE_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
-#     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise 
-#   )
-
-
 cities <- donorpool %>%
   group_by(YEAR, Place.Name) %>%
   summarise(
