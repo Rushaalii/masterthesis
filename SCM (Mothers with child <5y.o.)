@@ -16,21 +16,42 @@ library(openxlsx)
 
 # Remove all objects from the workspace
 rm(list=ls())
-setwd("/Users/nic/Desktop/Thesis Data")
+setwd("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/New York City")
 
-synth_data <- read_csv("50SyntheticControlWomen.csv")
+synth_data <- read_csv("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/100SyntheticControl_usefor_below5yo.csv.gz")
+
+#Restrict until 2019
+synth_data$YEAR <- as.numeric(as.character(synth_data$YEAR))
+
+synth_data <- synth_data[synth_data$YEAR < 2020,]
+
 
 
 #Add new variables (add poverty!!!)
-synth_data$married <- ifelse (synth_data$MARST <= 2, 1, 0)
-synth_data$white <- ifelse (synth_data$RACE == 1, 1, 0)
-synth_data$black <- ifelse (synth_data$RACE == 2, 1, 0)
-synth_data$hispanic <- ifelse (synth_data$HISPAN != 0,1,0)
+synth_data$laborforce <- ifelse(synth_data$LABFORCE == 2, 1, ifelse(synth_data$LABFORCE == 1, 0, NA))
+synth_data$employment <- ifelse(synth_data$EMPSTAT == 1, 1, ifelse(synth_data$EMPSTAT %in% c(2, 3), 0, NA))
+synth_data$fulltime <- ifelse(synth_data$UHRSWORK >= 30, 1, 0)
+synth_data$no.children <- ifelse(synth_data$NCHILD >= 4, 4, synth_data$NCHILD)
+synth_data$race <- ifelse(synth_data$RACE >= 3, 3, synth_data$RACE)
+synth_data$married <- ifelse(synth_data$MARST <= 2, 1, 0)
+synth_data$white <- ifelse(synth_data$RACE == 1, 1, 0)
+synth_data$black <- ifelse(synth_data$RACE == 2, 1, 0)
+synth_data$INCWAGE[synth_data$INCWAGE == 999999] <- NA
+
+synth_data$hsdropout <- ifelse(synth_data$EDUCD <= 061, 1, 0)
+synth_data$hsgraduate <- ifelse(synth_data$EDUCD >= 062 & synth_data$EDUCD < 065, 1, 0)
+synth_data$somecollege <- ifelse(synth_data$EDUCD >= 065 & synth_data$EDUCD <= 100, 1, 0)
+synth_data$min_bachelor <- ifelse(synth_data$EDUCD > 100, 1, 0)
+
+# Adding the poverty variable
+synth_data$poverty <- ifelse(synth_data$POVERTY == 1, 1, 0)
+
 
 
 ################################################################################
 # Creating Donor Pool
 ################################################################################
+
 
 # Data Loading and Cleaning
 geographicdata2012 <- read.xlsx("2012-2021 PUMAS Cities.xlsx", sheet = 1)
@@ -58,18 +79,6 @@ pumas2005donorpool <- cities2005donorpool$PUMA
 pumas2012donorpool <- cities2012donorpool$PUMA
 donorpool <- synth_data[(synth_data$PUMA %in% pumas2005donorpool & synth_data$YEAR < 2012) | (synth_data$PUMA %in% pumas2012donorpool & synth_data$YEAR >= 2012),]
 
-# donorpoolcities <- c("New York city", "Los Angeles city", "Chicago city", "Houston city", "Philadelphia city", "Phoenix city", "San Antonio city", "San Diego city", "Dallas city", "San Jose city", "Indianapolis city (balance)", "San Francisco city", "Columbus city", "Charlotte city", "Detroit city", "El Paso city", "Memphis city", "Seattle city", "Nashville-Davidson metropolitan government (balance)", "Denver city", "Louisville/Jefferson County metro government (balance)", "Portland city", "Las Vegas city", "Albuquerque city", "Tucson city", "Fresno city", "Sacramento city", "Long Beach city", "Kansas City city", "Mesa city", "Virginia Beach city", "Colorado Springs city", "Omaha city", "Raleigh city", "Cleveland city", "Oakland city", "Minneapolis city", "Wichita city", "San Juan zona urbana", "Arlington city", "Bakersfield city", "Urban Honolulu CDP", "Anaheim city", "Tampa city", "Aurora city", "Santa Ana city", "St. Louis city", "Pittsburgh city", "Corpus Christi city", "Riverside city")
-# cities2005donorpool <- geographicdata2005[geographicdata2005$Place.Name %in% donorpoolcities,]
-# cities2012donorpool <- geographicdata2012[geographicdata2012$Place.Name %in% donorpoolcities,]
-# pumas2005donorpool <- cities2005donorpool$PUMA[cities2005donorpool$Percent.PUMA.Population > 0.75]
-# pumas2012donorpool <- cities2012donorpool$PUMA[cities2012donorpool$Percent.PUMA.Population > 0.75]
-# donorpool <- synth_data[(synth_data$PUMA %in% pumas2005donorpool & synth_data$YEAR < 2012) | (synth_data$PUMA %in% pumas2012donorpool & synth_data$YEAR >= 2012),]
-
-
-################################################################################
-# Labour Force Participation Rate
-################################################################################
-
 #Donorpool
 donorpool$PUMA <- as.character(donorpool$PUMA)
 cities2005donorpool$PUMA <- as.character(cities2005donorpool$PUMA)
@@ -85,91 +94,68 @@ donorpool <- bind_rows(
     left_join(dplyr::select(cities2012donorpool, PUMA, Place.Name), by = "PUMA", relationship = "many-to-many")
 )
 
-#Labor Force Participation Rate
-part_rate_women_donorpool <- donorpool %>%
-  group_by(YEAR, Place.Name) %>%
-  summarise(ParticipationRate = sum(LABFORCE == 2) / sum(LABFORCE %in% c(1, 2))) %>%
-  ungroup()  # Remove the grouping structure
 
-# Join this back to the original dataframe
-donorpool <- merge(donorpool, part_rate_women_donorpool, by = c("YEAR","Place.Name"),all.x = TRUE)
+#Restrict to women with children below 5
+donorpool[donorpool$NCHLT5 > 0,]
 
 
-#Restrict sample to women with children under age of 5
-donorpool_women5 <- donorpool[donorpool$NCHLT5 > 0,]
-
-#Labor Force Participation Rate/ Employment Rate 
-part_rate_women5_donorpool <- donorpool_women5 %>%
-  group_by(YEAR, Place.Name) %>%
-  summarise(
-    ParticipationRate5 = sum(LABFORCE == 2) / sum(LABFORCE %in% c(1, 2)),
-    EmploymentRate5 = sum(EMPSTAT == 1) / sum(EMPSTAT %in% c(1, 2)),
-    .groups = 'drop' 
-  )
-
-donorpool_women5 <- merge(donorpool_women5, part_rate_women5_donorpool, by = c("YEAR","Place.Name"),all.x = TRUE)
-
+################################################################################
+# Labour Force Participation Rate
+################################################################################
 
 #Run regressions for donorpool with women <5
-model1 <- lm(ParticipationRate5 ~ NCHILD + NCHLT5 + AGE + EDUC + married + white + black + hispanic, data = donorpool_women5)
+model1 <- lm(laborforce ~ NCHILD + NCHLT5 + AGE + married + white + black + hsdropout + hsgraduate + somecollege + min_bachelor, data = donorpool)
 summary(model1)
 
 #Create necessary variables: 
 #Shares by cities 
 
-#Share married
-#Average age
-#Average education (maybe adjust and create binary variables)
-#Share white mothers
-#Share black mothers
-#Share hispanic mothers
 
 
-synthcontrol_donorpool <- donorpool_women5 %>%
+synthcontrol_donorpool <- donorpool %>%
   group_by(Place.Name, YEAR) %>%
   summarise(
-    married = mean(married, na.rm = TRUE),
-    white = mean(white, na.rm = TRUE),
-    black = mean(black, na.rm = TRUE),
-    hispanic = mean(hispanic, na.rm = TRUE),
-    education = mean(EDUC, na.rm = TRUE),
-    age = mean(AGE, na.rm = TRUE),
-    part_rate5 = mean(ParticipationRate5, na.rm = TRUE),
-    emp_rate5 = mean(EmploymentRate5, na.rm = TRUE),
-    hours = mean(UHRSWORK, na.rm = TRUE),
-    .groups = "drop"  
+    married = weighted.mean(married, w = PERWT, na.rm = TRUE),
+    white = weighted.mean(white, w = PERWT, na.rm = TRUE),
+    black = weighted.mean(black, w = PERWT, na.rm = TRUE),
+    share_hsdropout = weighted.mean(hsdropout, w = PERWT, na.rm = TRUE),
+    share_hsgraduate = weighted.mean(hsgraduate, w = PERWT, na.rm = TRUE),
+    share_somecollege = weighted.mean(somecollege, w = PERWT, na.rm = TRUE),
+    share_min_bachelor = weighted.mean(min_bachelor, w = PERWT, na.rm = TRUE),
+    age = weighted.mean(AGE, w = PERWT, na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK[EMPSTAT == 1], w = PERWT[EMPSTAT == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime, w = PERWT, na.rm = TRUE),
+    no_children = weighted.mean(no.children, w = PERWT, na.rm = TRUE),
+    .groups = "drop"
   )
 
 #Include lags
-
 #2012
-part_rate5_2012 <- synthcontrol_donorpool %>%
+part_rate_2012 <- synthcontrol_donorpool %>%
   filter(YEAR == 2012) %>%
-  dplyr::select(Place.Name, part_rate5_2012 = part_rate5)
+  dplyr::select(Place.Name, part_rate_2012 = part_rate)
 
 synthcontrol_donorpool <- synthcontrol_donorpool %>%
-  left_join(part_rate5_2012, by = "Place.Name")
-
-
-
-
+  left_join(part_rate_2012, by = "Place.Name")
 
 #2010
-part_rate5_2010 <- synthcontrol_donorpool %>%
+part_rate_2010 <- synthcontrol_donorpool %>%
   filter(YEAR == 2010) %>%
-  dplyr::select(Place.Name, part_rate5_2010 = part_rate5)
+  dplyr::select(Place.Name, part_rate_2010 = part_rate)
 
 synthcontrol_donorpool <- synthcontrol_donorpool %>%
-  left_join(part_rate5_2010, by = "Place.Name")
+  left_join(part_rate_2010, by = "Place.Name")
 
 
 #2007 values and creating a new dataframe to merge back
-part_rate5_2007 <- synthcontrol_donorpool %>%
+part_rate_2007 <- synthcontrol_donorpool %>%
   filter(YEAR == 2007) %>%
-  dplyr::select(Place.Name, part_rate5_2007 = part_rate5)  # Renaming the column for clarity
+  dplyr::select(Place.Name, part_rate_2007 = part_rate)  # Renaming the column for clarity
 
 synthcontrol_donorpool <- synthcontrol_donorpool %>%
-  left_join(part_rate5_2007, by = "Place.Name")
+  left_join(part_rate_2007, by = "Place.Name")
 
 
 # Now, convert this factor to integers
@@ -180,30 +166,31 @@ synthcontrol_donorpool$city <- as.numeric(synthcontrol_donorpool$city)
 synthcontrol_donorpool <- as.data.frame(synthcontrol_donorpool)
 
 # For now (STILL HAVE TO ADAPT, WHY IS THAT???)
-cities_to_remove <- c(1, 19)
+cities_to_remove <- 1
 synthcontrol_donorpool <- synthcontrol_donorpool[!synthcontrol_donorpool$city %in% cities_to_remove, ]
+
 
 synthcontrol_donorpool$city <- factor(synthcontrol_donorpool$Place.Name)
 synthcontrol_donorpool$city <- as.numeric(synthcontrol_donorpool$city)
 
 # Correct way to specify controls
-controls_identifier <- setdiff(unique(synthcontrol_donorpool$city), 12)
+controls_identifier <- setdiff(unique(synthcontrol_donorpool$city), 11)
 
-#New York City is no. 19
+#New York City is no. 11
 # Corrected dataprep function
 # Setting up the dataprep function correctly
 dataprep.out <-
   dataprep(
     foo = synthcontrol_donorpool,
-    predictors = c("age","married","white","hispanic","black","education","part_rate5_2007","part_rate5_2010","part_rate5_2012"),
+    predictors = c("age","married","white","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","part_rate_2007","part_rate_2010","part_rate_2012"),
     predictors.op = "mean",
-    dependent = "part_rate5",
+    dependent = "part_rate",
     unit.variable = "city",
     time.variable = "YEAR",
-    treatment.identifier = 12,
+    treatment.identifier = 11,
     controls.identifier = controls_identifier,
-    time.predictors.prior = 2006:2013,
-    time.optimize.ssr = 2006:2013,
+    time.predictors.prior = 2006:2014,
+    time.optimize.ssr = 2006:2014,
     unit.names.variable = "Place.Name",  
     time.plot = 2006:2019
   )
@@ -234,6 +221,7 @@ gaps.plot(synth.res = synth.out,
           Ylab = "Effect",
           Xlab = "Year",
           Main = " Gap between labor force participation in NYC and its synthetic version")
+
 
 
 ### Robustness Checks ### 
