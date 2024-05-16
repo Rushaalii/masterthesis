@@ -49,23 +49,23 @@ synth_data$poverty <- ifelse(synth_data$POVERTY == 1, 1, 0)
 
 
 ################################################################################
-# Creating Donor Pool
+# Creating Donor Pool (Update from Rabea)
 ################################################################################
 
-
 # Data Loading and Cleaning
+geographicdata2005 <- read.xlsx("2005-2011 PUMAS Citites.xlsx", sheet = 1)
+geographicdata2005$UPUMA <- paste0(geographicdata2005$FIPS.State.Code, "_", geographicdata2005$PUMA)
+
 geographicdata2012 <- read.xlsx("2012-2021 PUMAS Cities.xlsx", sheet = 1)
-geographicdata2012$PUMA <- sub("^0", "", geographicdata2012$PUMA)
 geographicdata2012$Place.Name <- ifelse(geographicdata2012$Place.Name == "Nashville-Davidson metropolitan government (balance)", "Nashville-Davidson (balance)", geographicdata2012$Place.Name)
 geographicdata2012$X13 <- NULL
-geographicdata2005 <- read.xlsx("2005-2011 PUMAS Citites.xlsx", sheet = 1)
-geographicdata2005$PUMA <- sub("^0", "", geographicdata2005$PUMA)
+geographicdata2012$UPUMA <- paste0(geographicdata2012$FIPS.State.Code, "_", geographicdata2012$PUMA)
 
 # Keeping only cities with >500'000 population and >75% PUMA zone coverage
 cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 0.75)
 cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 0.75)
 
-# Keeping only cities in 2012 that had >500'000 population in year 2000.
+# Keeping only cities in 2012 that had >500'000 population in year 2000 (questionable?) 
 metropolitan_cities <- unique(cities2005donorpool$Place.Name)
 cities2012donorpool <- subset(cities2012donorpool, Place.Name %in% metropolitan_cities)
 
@@ -75,25 +75,24 @@ cities2005donorpool <- subset(cities2005donorpool, !(Place.Name %in% major_preK)
 cities2012donorpool <- subset(cities2012donorpool, !(Place.Name %in% major_preK))
 
 # Extract PUMA codes
-pumas2005donorpool <- cities2005donorpool$PUMA
-pumas2012donorpool <- cities2012donorpool$PUMA
-donorpool <- synth_data[(synth_data$PUMA %in% pumas2005donorpool & synth_data$YEAR < 2012) | (synth_data$PUMA %in% pumas2012donorpool & synth_data$YEAR >= 2012),]
+upumas2005donorpool <- cities2005donorpool$UPUMA
+upumas2012donorpool <- cities2012donorpool$UPUMA
+donorpool <- synth_data[(synth_data$UPUMA %in% upumas2005donorpool & synth_data$YEAR < 2012) | (synth_data$UPUMA %in% upumas2012donorpool & synth_data$YEAR >= 2012),]
 
-#Donorpool
-donorpool$PUMA <- as.character(donorpool$PUMA)
-cities2005donorpool$PUMA <- as.character(cities2005donorpool$PUMA)
+# Donorpool
+# donorpool$UPUMA <- as.character(donorpool$UPUMA)
+# cities2005donorpool$UPUMA <- as.character(cities2005donorpool$UPUMA)
 
 #Add Cities 
 donorpool <- bind_rows(
   donorpool %>% 
     filter(YEAR <= 2011) %>%
-    left_join(dplyr::select(cities2005donorpool, PUMA, Place.Name), by = "PUMA", relationship = "many-to-many"),
+    left_join(dplyr::select(cities2005donorpool, UPUMA, Place.Name), by = "UPUMA"),
   
   donorpool %>% 
     filter(YEAR >= 2012) %>%
-    left_join(dplyr::select(cities2012donorpool, PUMA, Place.Name), by = "PUMA", relationship = "many-to-many")
+    left_join(dplyr::select(cities2012donorpool, UPUMA, Place.Name), by = "UPUMA")
 )
-
 
 #Restrict to women with children below 5
 donorpool[donorpool$NCHLT5 > 0,]
