@@ -25,6 +25,10 @@ synth_data$YEAR <- as.numeric(as.character(synth_data$YEAR))
 
 synth_data <- synth_data[synth_data$YEAR < 2020,]
 
+# Create unique/state-independent PUMA
+synth_data$STATEFIP <- sprintf("%02d", synth_data$STATEFIP)
+synth_data$PUMA <- sprintf("%05d", synth_data$PUMA)
+synth_data$UPUMA <- paste0(synth_data$STATEFIP,"_", synth_data$PUMA)
 
 
 #Add new variables (add poverty!!!)
@@ -45,8 +49,6 @@ synth_data$min_bachelor <- ifelse(synth_data$EDUCD > 100, 1, 0)
 
 # Adding the poverty variable
 synth_data$poverty <- ifelse(synth_data$POVERTY == 1, 1, 0)
-
-
 
 ################################################################################
 # Creating Donor Pool (Update from Rabea)
