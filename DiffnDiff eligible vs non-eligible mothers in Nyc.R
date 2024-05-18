@@ -9,10 +9,10 @@ library(openxlsx)
 rm(list = ls()) 
 
 # Set working directory
-setwd("C:/Users/rusha/Downloads")
+setwd("C:/Users/ru/Downloads")
 
 # Load data
-data <- read_csv("C:/Users/rusha/Downloads/100SyntheticControl_usefor_below5yo.csv.gz")
+data <- read_csv("C:/Users/ru/Downloads/100SyntheticControl_usefor_below5yo.csv.gz")
 data <- data[data$YEAR < 2020,]
 
 # Data Cleaning 
@@ -95,7 +95,7 @@ print(did_results_nyc)
 did_coef_nyc <- did_results_nyc %>% filter(term == "treat_post")
 print(did_coef_nyc)
 
-# Visualizing the results with pre-treatment and post-treatment indication
+# Visualizing results 
 plot_did_nyc <- ggplot(data = nyc_summary, aes(x = YEAR, y = part_rate, color = as.factor(eligible))) +
   geom_line() +
   geom_vline(xintercept = 2014, linetype = "dashed", color = "blue") + # Line indicating treatment start
