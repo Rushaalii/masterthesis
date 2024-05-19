@@ -51,10 +51,11 @@ data$employment <- ifelse(data$EMPSTAT_MOM == 1, 1, ifelse(data$EMPSTAT_MOM == c
 data$fulltime <- ifelse(data$UHRSWORK_MOM >= 30, 1, 0)
 data$no.children <- ifelse(data$NCHILD_MOM >= 4, 4, data$NCHILD_MOM)
 data$race <- ifelse(data$RACE_MOM >= 3, 3, data$RACE_MOM)
-data$married <- ifelse (data$MARST_MOM <= 2, 1, 0)
+data$married <- ifelse (data$MARST_MOM == 1, 1, 0) #Only married where partner is present!
 data$white <- ifelse (data$RACE_MOM == 1, 1, 0)
 data$black <- ifelse (data$RACE_MOM == 2, 1, 0)
 data$INCWAGE_MOM[data$INCWAGE_MOM == 999999] <- NA
+
 
 data$hsdropout = ifelse(data$EDUCD_MOM <= 061, 1,0)
 data$hsgraduate = ifelse(data$EDUCD_MOM <= 064, 1,0)
@@ -169,11 +170,11 @@ table(donorpool$YEAR, donorpool$Place.Name)
 cities <- donorpool %>%
   group_by(YEAR, Place.Name) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w =PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w =PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 
@@ -184,11 +185,11 @@ cities <- cities %>%
 cities_not_nyc <- not_nyc %>%
   group_by(YEAR) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w =PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w =PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 cities_not_nyc <- cities_not_nyc %>%
@@ -198,11 +199,11 @@ cities_not_nyc <- cities_not_nyc %>%
 cities_nyc <- nyc %>%
   group_by(YEAR) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w =PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w =PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 
@@ -260,15 +261,14 @@ grid.arrange(plot_part_rate, plot_emp_rate, plot_inc, plot_hours,ncol=2)
 ########################################
 
 #Run regressions for donorpool add hispanic
-model1 <- lm(laborforce ~ NCHILD_MOM + NCHLT5_MOM + AGE_MOM + EDUC_MOM + married + white + black , data = donorpool)
+model1 <- lm(laborforce ~ NCHILD_MOM + NCHLT5_MOM + AGE_MOM + hsdropout + hsgraduate + somecollege + min_bachelor + married + white + black , data = donorpool)
 summary(model1)
 
 #Create necessary variables: 
 synthcontrol_donorpool <- donorpool %>%
   group_by(Place.Name, YEAR) %>%
-  #filter(married == 0,na.rm = TRUE) %>% #Delete/Change
   summarise(
-    married = weighted.mean(married, , w = PERWT, na.rm = TRUE),
+    married = weighted.mean(married , w = PERWT, na.rm = TRUE),
     white = weighted.mean(white, w = PERWT,na.rm = TRUE),
     black = weighted.mean(black, w = PERWT,na.rm = TRUE),
     #hispanic = weighted.mean(hispanic, na.rm = TRUE),
@@ -374,7 +374,7 @@ controls_identifier <- setdiff(unique(synthcontrol_donorpool$city), 13)
 dataprep.out <-
   dataprep(
     foo = synthcontrol_donorpool,
-    predictors = c("age","married","white","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","no_children","part_rate_2007","part_rate_2010","part_rate_2012"), #"part_rate_2007","part_rate_2010","part_rate_2012"#add "hispanic"
+    predictors = c("age","married","white","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","no_children"), #"part_rate_2007","part_rate_2010","part_rate_2012"#add "hispanic"
     predictors.op = "mean",
     dependent = "part_rate",
     unit.variable = "city",
@@ -398,6 +398,8 @@ gaps
 
 synth.tables$tab.w
 synth.tables$tab.v
+synth.tables$tab.pred
+
 
 path.plot(synth.res = synth.out,
           dataprep.res = dataprep.out,
@@ -443,6 +445,8 @@ gaps
 
 synth.tables$tab.w
 synth.tables$tab.v
+synth.tables$tab.pred
+
 
 path.plot(synth.res = synth.out,
           dataprep.res = dataprep.out,
@@ -488,6 +492,8 @@ gaps
 
 synth.tables$tab.w
 synth.tables$tab.v
+synth.tables$tab.pred
+
 
 path.plot(synth.res = synth.out,
           dataprep.res = dataprep.out,
@@ -532,6 +538,8 @@ gaps
 
 synth.tables$tab.w
 synth.tables$tab.v
+synth.tables$tab.pred
+
 
 path.plot(synth.res = synth.out,
           dataprep.res = dataprep.out,
@@ -548,4 +556,316 @@ gaps.plot(synth.res = synth.out,
           Xlab = "Year",
           Main = " Gap between Fulltime Share in NYC and its synthetic version")
 
+
+
+
+
+
+###########################
+###Check Heterogeneities###
+###########################
+
+####Only not married###
+
+# Calculate the share of married people and perform further analysis on unmarried individuals
+synthcontrol_donorpool <- donorpool %>%
+  group_by(Place.Name, YEAR) %>%
+  # Calculate the share of married people
+  summarise(
+    share_married = weighted.mean(married, w = PERWT, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  # Join with the original dataset to retain all data while carrying forward the calculated share_married
+  left_join(donorpool, by = c("Place.Name", "YEAR")) %>%
+  # Now filter to process only unmarried data
+  filter(married == 0) %>%
+  # Perform the rest of the aggregations
+  group_by(Place.Name, YEAR) %>%
+  summarise(
+    white = weighted.mean(white, w = PERWT, na.rm = TRUE),
+    black = weighted.mean(black, w = PERWT, na.rm = TRUE),
+    share_hsdropout = weighted.mean(hsdropout, w = PERWT, na.rm = TRUE),
+    share_hsgraduate = weighted.mean(hsgraduate, w = PERWT, na.rm = TRUE),
+    share_somecollege = weighted.mean(somecollege, w = PERWT, na.rm = TRUE),
+    share_min_bachelor = weighted.mean(min_bachelor, w = PERWT, na.rm = TRUE),
+    age = weighted.mean(AGE_MOM, w = PERWT, na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
+    no_children = weighted.mean(no.children, w = PERWT, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+synthcontrol_donorpool <- synthcontrol_donorpool[complete.cases(synthcontrol_donorpool), ]
+
+
+#Include lags
+#2012
+part_rate_2012 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2012) %>%
+  dplyr::select(Place.Name, part_rate_2012 = part_rate)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(part_rate_2012, by = "Place.Name")
+
+hours_2012 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2012) %>%
+  dplyr::select(Place.Name, hours_2012 = hours)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(hours_2012, by = "Place.Name")
+
+income_2012 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2012) %>%
+  dplyr::select(Place.Name, income_2012 = income)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(income_2012, by = "Place.Name")
+
+
+#2010
+part_rate_2010 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2010) %>%
+  dplyr::select(Place.Name, part_rate_2010 = part_rate)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(part_rate_2010, by = "Place.Name")
+
+hours_2010 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2010) %>%
+  dplyr::select(Place.Name, hours_2010 = hours)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(hours_2010, by = "Place.Name")
+
+income_2010 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2010) %>%
+  dplyr::select(Place.Name, income_2010 = income)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(income_2010, by = "Place.Name")
+
+
+#2007 values and creating a new dataframe to merge back
+part_rate_2007 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2007) %>%
+  dplyr::select(Place.Name, part_rate_2007 = part_rate)  # Renaming the column for clarity
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(part_rate_2007, by = "Place.Name")
+
+hours_2007 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2007) %>%
+  dplyr::select(Place.Name, hours_2007 = hours)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(hours_2007, by = "Place.Name")
+
+income_2007 <- synthcontrol_donorpool %>%
+  filter(YEAR == 2007) %>%
+  dplyr::select(Place.Name, income_2007 = income)
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  left_join(income_2007, by = "Place.Name")
+
+
+
+# Now, convert this factor to integers
+synthcontrol_donorpool$city <- factor(synthcontrol_donorpool$Place.Name)
+synthcontrol_donorpool$city <- as.numeric(synthcontrol_donorpool$city)
+
+#Change format of data frame (necessary for command dataprep)
+synthcontrol_donorpool <- as.data.frame(synthcontrol_donorpool)
+
+# Correct way to specify controls
+controls_identifier <- setdiff(unique(synthcontrol_donorpool$city), 13)
+
+#New York City is no. 13
+#Labor Force Participation
+dataprep.out <-
+  dataprep(
+    foo = synthcontrol_donorpool,
+    predictors = c("age","white","marreied","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","no_children","part_rate_2007","part_rate_2010","part_rate_2012"), #"part_rate_2007","part_rate_2010","part_rate_2012"#add "hispanic"
+    predictors.op = "mean",
+    dependent = "part_rate",
+    unit.variable = "city",
+    time.variable = "YEAR",
+    treatment.identifier = 13,
+    controls.identifier = controls_identifier,
+    time.predictors.prior = 2006:2013,
+    time.optimize.ssr = 2006:2013,
+    unit.names.variable = "Place.Name",  
+    time.plot = 2006:2019
+  )
+
+synth.out <- synth(dataprep.out)
+synth.tables <- synth.tab(dataprep.res = dataprep.out,
+                          synth.res    = synth.out
+)
+
+gaps <- dataprep.out$Y1plot - (dataprep.out$Y0plot %*% synth.out$solution.w)
+gaps[1:14, 1]
+gaps
+
+synth.tables$tab.w
+synth.tables$tab.v
+synth.tables$tab.pred
+
+
+path.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Labor Force Participation",
+          Xlab = "Year",
+          Legend = c("NYC", "Synthetic NYC"),
+          Main = "Mothers of 4y.o. (NYC vs Synthetic NYC)")
+
+gaps.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Effect",
+          Xlab = "Year",
+          Main = " Gap between labor force participation in NYC and its synthetic version")
+
+
+#Hours
+dataprep.out <-
+  dataprep(
+    foo = synthcontrol_donorpool,
+    predictors = c("age","married","white","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","no_children","hours_2007","hours_2010","hours_2012"), #
+    predictors.op = "mean",
+    dependent = "hours",
+    unit.variable = "city",
+    time.variable = "YEAR",
+    treatment.identifier = 13,
+    controls.identifier = controls_identifier,
+    time.predictors.prior = 2006:2013,
+    time.optimize.ssr = 2006:2013,
+    unit.names.variable = "Place.Name",  
+    time.plot = 2006:2019
+  )
+
+synth.out <- synth(dataprep.out)
+synth.tables <- synth.tab(dataprep.res = dataprep.out,
+                          synth.res    = synth.out
+)
+
+gaps <- dataprep.out$Y1plot - (dataprep.out$Y0plot %*% synth.out$solution.w)
+gaps[1:14, 1]
+gaps
+
+synth.tables$tab.w
+synth.tables$tab.v
+synth.tables$tab.pred
+
+
+path.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Hours",
+          Xlab = "Year",
+          Legend = c("NYC", "Synthetic NYC"),
+          Main = "Hours Mothers of 4y.o. (NYC vs Synthetic NYC)")
+
+gaps.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Effect",
+          Xlab = "Year",
+          Main = " Gap between Hours in NYC and its synthetic version")
+
+
+#Income
+dataprep.out <-
+  dataprep(
+    foo = synthcontrol_donorpool,
+    predictors = c("age","married","white","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","no_children"), #add "hispanic"
+    predictors.op = "mean",
+    dependent = "income",
+    unit.variable = "city",
+    time.variable = "YEAR",
+    treatment.identifier = 13,
+    controls.identifier = controls_identifier,
+    time.predictors.prior = 2006:2013,
+    time.optimize.ssr = 2006:2013,
+    unit.names.variable = "Place.Name",  
+    time.plot = 2006:2019
+  )
+
+synth.out <- synth(dataprep.out)
+synth.tables <- synth.tab(dataprep.res = dataprep.out,
+                          synth.res    = synth.out
+)
+
+gaps <- dataprep.out$Y1plot - (dataprep.out$Y0plot %*% synth.out$solution.w)
+gaps[1:14, 1]
+gaps
+
+synth.tables$tab.w
+synth.tables$tab.v
+synth.tables$tab.pred
+
+
+path.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Labor Force Participation",
+          Xlab = "Year",
+          Legend = c("NYC", "Synthetic NYC"),
+          Main = "Income Mothers of 4y.o. (NYC vs Synthetic NYC)")
+
+gaps.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Effect",
+          Xlab = "Year",
+          Main = " Gap between Income in NYC and its synthetic version")
+
+#Fulltimework
+dataprep.out <-
+  dataprep(
+    foo = synthcontrol_donorpool,
+    predictors = c("age","married","white","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","no_children"), #add "hispanic"
+    predictors.op = "mean",
+    dependent = "fulltime",
+    unit.variable = "city",
+    time.variable = "YEAR",
+    treatment.identifier = 13,
+    controls.identifier = controls_identifier,
+    time.predictors.prior = 2006:2013,
+    time.optimize.ssr = 2006:2013,
+    unit.names.variable = "Place.Name",  
+    time.plot = 2006:2019
+  )
+
+synth.out <- synth(dataprep.out)
+synth.tables <- synth.tab(dataprep.res = dataprep.out,
+                          synth.res    = synth.out
+)
+
+gaps <- dataprep.out$Y1plot - (dataprep.out$Y0plot %*% synth.out$solution.w)
+gaps[1:14, 1]
+gaps
+
+synth.tables$tab.w
+synth.tables$tab.v
+synth.tables$tab.pred
+
+
+path.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Labor Force Participation",
+          Xlab = "Year",
+          Legend = c("NYC", "Synthetic NYC"),
+          Main = "Fulltime Share Mothers of 4y.o. (NYC vs Synthetic NYC)")
+
+gaps.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          tr.intake = 1990,
+          Ylab = "Effect",
+          Xlab = "Year",
+          Main = " Gap between Fulltime Share in NYC and its synthetic version")
 
