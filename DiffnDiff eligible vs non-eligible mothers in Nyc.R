@@ -1,71 +1,86 @@
-# Load necessary libraries
+library(raster)
 library(dplyr)
+library(purrr)
 library(ggplot2)
-library(tidyr)
+library(gridExtra)
 library(readr)
+library(data.table)
+library(Synth)
+library(tidyr)
+library(knitr)
+library(kableExtra)
+library(xtable)
+library(Synth)
 library(openxlsx)
+library(broom)
+
 
 # Remove all objects from the workspace
-rm(list = ls()) 
+rm(list=ls())
+setwd("/Users/tilpommer/Documents/BSE/Term 3/Master project/Results")
 
-# Set working directory
-setwd("C:/Users/ru/Downloads")
+data <- read_csv("/Users/tilpommer/Documents/BSE/Term 3/Master project/Results/100SyntheticControl_usefor_below5yo.csv.gz")
 
-# Load data
-data <- read_csv("C:/Users/ru/Downloads/100SyntheticControl_usefor_below5yo.csv.gz")
+#Restrict until 2019
+data$YEAR <- as.numeric(as.character(synth_data$YEAR))
+
 data <- data[data$YEAR < 2020,]
 
-# Data Cleaning 
-data <- data[!is.na(data$EMPSTAT) & !is.na(data$LABFORCE) & data$INCWAGE != 999999,]
+# Create unique/state-independent PUMA
+data$STATEFIP <- sprintf("%02d", data$STATEFIP)
+data$PUMA <- sprintf("%05d", data$PUMA)
+data$UPUMA <- paste0(data$STATEFIP,"_", data$PUMA)
 
-# Add additional variables
 data$laborforce <- ifelse(data$LABFORCE == 2, 1, ifelse(data$LABFORCE == 1, 0, NA))
 data$employment <- ifelse(data$EMPSTAT == 1, 1, ifelse(data$EMPSTAT %in% c(2,3), 0, NA))
 data$child5 <- ifelse(data$NCHLT5 > 0, 1, 0)
 
-# Load geographic data
-geographicdata2012 <- read.xlsx("C:/Users/rusha/Downloads/2012-2021 PUMAS Cities.xlsx", sheet = 1)
-geographicdata2012$PUMA <- sub("^0", "", geographicdata2012$PUMA)
-geographicdata2005 <- read.xlsx("C:/Users/rusha/Downloads/2005-2011 PUMAS Citites.xlsx", sheet = 1)
-geographicdata2005$PUMA <- sub("^0", "", geographicdata2005$PUMA)
 
-# Filter cities with >500'000 population and >75% PUMA zone coverage
-cities2005donorpool <- subset(geographicdata2005, Place.2000.Population > 500000 & Percent.PUMA.Population > 0.75)
-cities2012donorpool <- subset(geographicdata2012, Place.2010.Population > 500000 & Percent.PUMA.Population > 0.75)
+################################################################################
+# Creating Donor Pool
+################################################################################
 
-# Keep cities in 2012 that had >500'000 population in 2000
+# Data Loading and Cleaning
+geographicdata2005 <- read.xlsx("2005-2011 PUMAS Citites.xlsx", sheet = 1)
+geographicdata2005$UPUMA <- paste0(geographicdata2005$FIPS.State.Code, "_", geographicdata2005$PUMA)
+
+geographicdata2012 <- read.xlsx("2012-2021 PUMAS Cities.xlsx", sheet = 1)
+geographicdata2012$Place.Name <- ifelse(geographicdata2012$Place.Name == "Nashville-Davidson metropolitan government (balance)", "Nashville-Davidson (balance)", geographicdata2012$Place.Name)
+geographicdata2012$X13 <- NULL
+geographicdata2012$UPUMA <- paste0(geographicdata2012$FIPS.State.Code, "_", geographicdata2012$PUMA)
+
+# Keeping only cities with >500'000 population and >75% PUMA zone coverage
+cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 0.75)
+cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 0.75)
+
+# Keeping only cities in 2012 that had >500'000 population in year 2000 (questionable?) 
 metropolitan_cities <- unique(cities2005donorpool$Place.Name)
 cities2012donorpool <- subset(cities2012donorpool, Place.Name %in% metropolitan_cities)
 
-# Remove cities with major pre-K policies
+# Removing cities with major pre-K policies
 major_preK <- c("Washington city", "Baltimore city", "Jacksonville city", "Oklahoma City city", "Milwaukee city", "Fort Worth city", "Austin city", "Boston city")
 cities2005donorpool <- subset(cities2005donorpool, !(Place.Name %in% major_preK))
 cities2012donorpool <- subset(cities2012donorpool, !(Place.Name %in% major_preK))
 
-# Extract PUMA codes and filter donor pool
-pumas2005donorpool <- cities2005donorpool$PUMA
-pumas2012donorpool <- cities2012donorpool$PUMA
-donorpool <- data[(data$PUMA %in% pumas2005donorpool & data$YEAR < 2012) | (data$PUMA %in% pumas2012donorpool & data$YEAR >= 2012),]
+# Extract PUMA codes
+upumas2005donorpool <- cities2005donorpool$UPUMA
+upumas2012donorpool <- cities2012donorpool$UPUMA
+donorpool <- data[(data$UPUMA %in% upumas2005donorpool & data$YEAR < 2012) | (data$UPUMA %in% upumas2012donorpool & data$YEAR >= 2012),]
 
-# Add city names to donor pool
-donorpool$PUMA <- as.character(donorpool$PUMA)
-cities2005donorpool$PUMA <- as.character(cities2005donorpool$PUMA)
+# Donorpool
+# donorpool$UPUMA <- as.character(donorpool$UPUMA)
+# cities2005donorpool$UPUMA <- as.character(cities2005donorpool$UPUMA)
 
+#Add Cities 
 donorpool <- bind_rows(
   donorpool %>% 
     filter(YEAR <= 2011) %>%
-    left_join(dplyr::select(cities2005donorpool, PUMA, Place.Name), by = "PUMA"),
+    left_join(dplyr::select(cities2005donorpool, UPUMA, Place.Name), by = "UPUMA"),
   
   donorpool %>% 
     filter(YEAR >= 2012) %>%
-    left_join(dplyr::select(cities2012donorpool, PUMA, Place.Name), by = "PUMA")
+    left_join(dplyr::select(cities2012donorpool, UPUMA, Place.Name), by = "UPUMA")
 )
-
-donorpool$nyc <- ifelse(donorpool$Place.Name == "New York city", 1, 0)
-
-# Filter NYC data
-nyc <- donorpool[donorpool$Place.Name == "New York city",]
-
 
 # Ensure data has the necessary columns and convert YEAR to numeric if needed
 nyc <- donorpool %>%
@@ -80,7 +95,7 @@ nyc <- donorpool %>%
 nyc_summary <- nyc %>%
   group_by(YEAR, eligible, post, treat_post) %>%
   summarise(
-    part_rate = sum(LABFORCE == 2) / sum(LABFORCE %in% c(1, 2)),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
     .groups = 'drop'
   )
 
