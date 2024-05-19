@@ -374,7 +374,7 @@ controls_identifier <- setdiff(unique(synthcontrol_donorpool$city), 13)
 dataprep.out <-
   dataprep(
     foo = synthcontrol_donorpool,
-    predictors = c("age","married","white","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","no_children"), #"part_rate_2007","part_rate_2010","part_rate_2012"#add "hispanic"
+    predictors = c("age","married","white","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","no_children","part_rate_2007","part_rate_2010","part_rate_2012"), #"part_rate_2007","part_rate_2010","part_rate_2012"#add "hispanic"
     predictors.op = "mean",
     dependent = "part_rate",
     unit.variable = "city",
@@ -417,6 +417,57 @@ gaps.plot(synth.res = synth.out,
           Main = " Gap between labor force participation in NYC and its synthetic version")
 
 
+######################################################
+###DiD to get estimates of synthetic Control Method###
+######################################################
+
+control = dataprep.out$Y0plot %*% synth.out$solution.w
+control <- as.data.frame(control)
+names(control)[names(control) == "w.weight"] <- "part_rate"
+control$YEAR <- 2006:2019
+control$eligible <- 0
+control$post = ifelse(control$YEAR >= 2014, 1, 0)
+control$treat_post <- control$eligible * control$post
+
+
+# Subset the rows for "New York City"
+nyc <- synthcontrol_donorpool[synthcontrol_donorpool$city == "13", c("YEAR", "part_rate")]
+nyc$eligible <- 1
+nyc$post = ifelse(nyc$YEAR >= 2014, 1, 0)
+nyc$treat_post <- nyc$eligible * nyc$post
+
+# Stack ny_rows below synth.control
+did <- rbind(control, nyc)
+
+# Fitting the Difference-in-Differences model
+did_model <- lm(part_rate ~ eligible + post + treat_post, data = did)
+
+# Summarizing the results
+did_results <- tidy(did_model)
+print(did_results)
+
+# Extracting and interpreting coefficients
+did_coef <- did_results %>% filter(term == "treat_post")
+print(did_coef)
+
+# Visualizing results 
+plot_did <- ggplot(data = did, aes(x = YEAR, y = part_rate, color = as.factor(eligible))) +
+  geom_line() +
+  geom_vline(xintercept = 2014, linetype = "dashed", color = "blue") + # Line indicating treatment start
+  annotate("text", x = 2011, y = max(did$part_rate), label = "Pre-treatment", hjust = 1, color = "blue") + # Pre-treatment label
+  annotate("text", x = 2016, y = max(did$part_rate), label = "Post-treatment", hjust = 0, color = "blue") + # Post-treatment label
+  labs(x = "Year", y = "Participation Rate", color = "Eligible (Child < 5)") +
+  ggtitle("Labor Force Participation Mothers with 4yo (NYC vs Donorpool)") +
+  theme_minimal() +
+  scale_x_continuous(breaks = seq(min(did$YEAR), max(did$YEAR), by = 1))
+
+print(plot_did)
+
+
+
+#############################
+###Other Outcome Variables###
+#############################
 #Hours
 dataprep.out <-
   dataprep(
@@ -868,4 +919,8 @@ gaps.plot(synth.res = synth.out,
           Ylab = "Effect",
           Xlab = "Year",
           Main = " Gap between Fulltime Share in NYC and its synthetic version")
+
+
+
+
 
