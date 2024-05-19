@@ -43,8 +43,8 @@ geographicdata2005 <- read.xlsx("2005-2011 PUMAS Citites.xlsx", sheet = 1)
 geographicdata2005$PUMA <- sub("^0", "", geographicdata2005$PUMA)
 
 # Keeping only cities with >500'000 population and >75% PUMA zone coverage
-cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 0.75)
-cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 0.75)
+cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 75)
+cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 75)
 
 # Keeping only cities in 2012 that had >500'000 population in year 2000.
 metropolitan_cities <- unique(cities2005donorpool$Place.Name)
