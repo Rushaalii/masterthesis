@@ -456,7 +456,7 @@ plot_did <- ggplot(data = did, aes(x = YEAR, y = part_rate, color = as.factor(el
   geom_vline(xintercept = 2014, linetype = "dashed", color = "blue") + # Line indicating treatment start
   annotate("text", x = 2011, y = max(did$part_rate), label = "Pre-treatment", hjust = 1, color = "blue") + # Pre-treatment label
   annotate("text", x = 2016, y = max(did$part_rate), label = "Post-treatment", hjust = 0, color = "blue") + # Post-treatment label
-  labs(x = "Year", y = "Participation Rate", color = "Eligible (Child < 5)") +
+  labs(x = "Year", y = "Participation Rate", color = "NYC") +
   ggtitle("Labor Force Participation Mothers with 4yo (NYC vs Donorpool)") +
   theme_minimal() +
   scale_x_continuous(breaks = seq(min(did$YEAR), max(did$YEAR), by = 1))
