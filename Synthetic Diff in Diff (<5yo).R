@@ -1,3 +1,5 @@
+#devtools::install_github("synth-inference/synthdid")
+
 library(raster)
 library(dplyr)
 library(purrr)
@@ -11,15 +13,16 @@ library(knitr)
 library(kableExtra)
 library(xtable)
 library(openxlsx)
+library(synthdid)
 
 # Remove all objects from the workspace
 rm(list = ls()) 
 
 ### SCRIPT for donorpool & LFP 
 
-setwd("/Users/rabea/Desktop/BSE/Master project/Analysis /")
+setwd("/Users/tilpommer/Documents/BSE/Term 3/Master project/Results")
 
-synth_data <- read_csv("/Users/rabea/Desktop/BSE/Master project/Analysis /usa_00036.csv.gz")
+synth_data <- read_csv("/Users/tilpommer/Documents/BSE/Term 3/Master project/Results/100SyntheticControl_usefor_below5yo.csv.gz")
 
 # Restrict until 2019
 synth_data$YEAR <- as.numeric(as.character(synth_data$YEAR))
@@ -55,8 +58,6 @@ synth_data$poverty <- ifelse(synth_data$POVERTY == 1, 1, 0)
 ################################################################################
 # Creating Donor Pool
 ################################################################################
-
-
 # Data Loading and Cleaning
 geographicdata2005 <- read.xlsx("2005-2011 PUMAS Citites.xlsx", sheet = 1)
 geographicdata2005$UPUMA <- paste0(geographicdata2005$FIPS.State.Code, "_", geographicdata2005$PUMA)
@@ -67,8 +68,8 @@ geographicdata2012$X13 <- NULL
 geographicdata2012$UPUMA <- paste0(geographicdata2012$FIPS.State.Code, "_", geographicdata2012$PUMA)
 
 # Keeping only cities with >500'000 population and >75% PUMA zone coverage
-cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 75)
-cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 75)
+cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 0.75)
+cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 0.75)
 
 # Keeping only cities in 2012 that had >500'000 population in year 2000 (questionable?) 
 metropolitan_cities <- unique(cities2005donorpool$Place.Name)
@@ -104,7 +105,7 @@ donorpool[donorpool$NCHLT5 > 0,]
 
 
 ################################################################################
-# Labour Force Participation Rate
+# Synthetic Donorpool#
 ################################################################################
 
 #Run regressions for donorpool with women <5
@@ -113,22 +114,27 @@ donorpool[donorpool$NCHLT5 > 0,]
 
 #Create necessary variables: 
 #Shares by cities 
-
+#Create necessary variables: 
+#Shares by cities 
 synthcontrol_donorpool <- donorpool %>%
   group_by(Place.Name, YEAR) %>%
   summarise(
     married = weighted.mean(married, w = PERWT, na.rm = TRUE),
     white = weighted.mean(white, w = PERWT, na.rm = TRUE),
     black = weighted.mean(black, w = PERWT, na.rm = TRUE),
+    share_hsdropout = weighted.mean(hsdropout, w = PERWT, na.rm = TRUE),
+    share_hsgraduate = weighted.mean(hsgraduate, w = PERWT, na.rm = TRUE),
+    share_somecollege = weighted.mean(somecollege, w = PERWT, na.rm = TRUE),
+    share_min_bachelor = weighted.mean(min_bachelor, w = PERWT, na.rm = TRUE),
     age = weighted.mean(AGE, w = PERWT, na.rm = TRUE),
     part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
     emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
     hours = weighted.mean(UHRSWORK[EMPSTAT == 1], w = PERWT[EMPSTAT == 1], na.rm = TRUE),
     fulltime = weighted.mean(fulltime, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE[INCWAGE > 0], w = PERWT[INCWAGE > 0], na.rm = TRUE),
     no_children = weighted.mean(no.children, w = PERWT, na.rm = TRUE),
     .groups = "drop"
   )
-
 
 ########### Script for Synthetic Diff in Diff ############
 
@@ -136,34 +142,152 @@ synthcontrol_donorpool <- donorpool %>%
 synthcontrol_donorpool <- synthcontrol_donorpool %>%
   mutate(Treated = ifelse(Place.Name == "New York city" & YEAR >= 2014, 1, 0))
 
-# Create dataset for SDID
+###Labor Force Participation Rate###
+
+# Create dataset for SDID (Labor Force Participation Rate)
 selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "part_rate", "Treated")]
 data_SDID <- data.frame(selected_variables)
 
-# # Testing for balanced data set
-# complete_cases <- data_SDID %>%
-#  group_by(Place.Name, YEAR) %>%
-#  summarise(n = n(), .groups = 'drop')
-# 
-# # Creating a balanced set of unit-time combinations
-# complete_panel <- expand.grid(Place.Name = unique(data_SDID$Place.Name), YEAR = unique(data_SDID$YEAR))
-# 
-# # Merging with the original data
-# data_SDID_balanced <- merge(complete_panel, data_SDID, by = c("Place.Name", "YEAR"), all = TRUE)
-# 
-# # Checking for the missing combinations (cities)
-# rows_with_na <- rowSums(is.na(data_SDID_balanced)) > 0
-# data_with_na <- data_SDID_balanced[rows_with_na, ]
-# 
-# places_to_remove <- c("Charlotte city")
-# 
-# data_SDID_filtered <- data_SDID_balanced[!data_SDID_balanced$Place.Name %in% places_to_remove, ]
-# data_SDID_unique <- distinct(data_SDID_filtered)
 
 # Synthetic Diff in Diff
-devtools::install_github("synth-inference/synthdid")
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
 
-library(synthdid) # loads the "synthdid" package
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+
+#Inserting more lines of control cities
+estimate = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+
+top.controls = synthdid_controls(estimate)[1:10, , drop=FALSE]
+plot(estimate, spaghetti.units=rownames(top.controls))
+
+
+California = c('Los Angeles city', 'San Diego city', 'San Francisco city')
+spaghetti.matrices = rbind(colMeans(setup$Y[rownames(setup$Y) %in% California, ]),
+                           colMeans(setup$Y[rownames(setup$Y) %in% rownames(top.controls), ]))
+rownames(spaghetti.matrices) = c('California', 'Top-10 Control Average')
+plot(estimate, spaghetti.matrices=list(spaghetti.matrices), spaghetti.line.alpha=.4)
+
+###Control Unit Contribution Plot###
+synthdid_units_plot(estimate, units = rownames(top.controls))
+
+
+#Weights Cities over Years
+setup$Y
+
+#Number Control Units
+setup$N0
+
+
+
+
+
+
+
+
+
+### Complex Plot, combining different estimates ###
+
+#Includes DID and Synthetic Control Estimate for Comparison
+
+#Synthetic Control
+# Now, convert this factor to integers
+synthcontrol_donorpool$city <- factor(synthcontrol_donorpool$Place.Name)
+synthcontrol_donorpool$city <- as.numeric(synthcontrol_donorpool$city)
+
+#Change format of data frame (necessary for command dataprep)
+synthcontrol_donorpool <- as.data.frame(synthcontrol_donorpool)
+
+# Correct way to specify controls
+controls_identifier <- setdiff(unique(synthcontrol_donorpool$city), 13)
+
+#New York City is no. 13
+#Labor Force Participation
+dataprep.out <-
+  dataprep(
+    foo = synthcontrol_donorpool,
+    predictors = c("age","married","white","black","share_hsdropout","share_hsgraduate","share_somecollege","share_min_bachelor","no_children"), #"part_rate_2007","part_rate_2010","part_rate_2012"#add "hispanic"
+    predictors.op = "mean",
+    dependent = "part_rate",
+    unit.variable = "city",
+    time.variable = "YEAR",
+    treatment.identifier = 13,
+    controls.identifier = controls_identifier,
+    time.predictors.prior = 2006:2013,
+    time.optimize.ssr = 2006:2013,
+    unit.names.variable = "Place.Name",  
+    time.plot = 2006:2019
+  )
+
+synth.out <- synth(dataprep.out)
+synth.tables <- synth.tab(dataprep.res = dataprep.out,
+                          synth.res    = synth.out
+)
+
+
+estimate.sc <- dataprep.out$Y0plot %*% synth.out$solution.w
+
+
+
+
+estimate.sc = sc_estimate(setup$Y, setup$N0, setup$T0)
+with.overlay = function(est, s) { attr(est,'overlay') = s; est }
+estimators = function(s) {
+  estimator.list = list(with.overlay(estimate, s), estimate.sc, estimate)
+  names(estimator.list)=c('synth. diff-in-diff', 'synth. control', '')
+  estimator.list
+}
+
+plot.estimators = function(ests, alpha.multiplier) {
+  p = synthdid_plot(ests, se.method='none',
+                    alpha.multiplier=alpha.multiplier, facet=rep(1,length(ests)),
+                    trajectory.linetype = 1, effect.curvature=-.4,
+                    trajectory.alpha=.5, effect.alpha=.5, diagram.alpha=1)
+  suppressMessages(p + scale_alpha(range=c(0,1), guide='none'))
+  # scale alpha so alpha=0 means totally invisible, which is unusual but useful
+  # for hiding our invisible estimate. We have to suppress a warning that 
+  # we're overriding an extant alpha scale that's added in synthdid_plot 
+}
+
+# set up the box we zoom in on in plot 5
+lambda = attr(estimate, 'weights')$lambda
+time = as.integer(timesteps(setup$Y))
+xbox.ind = c(which(lambda > .01)[1], setup$T0+4)
+xbox = time[xbox.ind] + c(-.5,.5)
+ybox = range(setup$Y[setup$N0+1, min(xbox.ind):(max(xbox.ind))]) + c(-4,4)
+
+
+p1 = plot.estimators(estimators(0),   alpha.multiplier=c(1,.1,0))
+p2 = plot.estimators(estimators(.75), alpha.multiplier=c(1,.1,0))
+p3 = plot.estimators(estimators(1),   alpha.multiplier=c(1,.1,0))
+p4 = plot.estimators(estimators(1),   alpha.multiplier=c(1, 1,0))
+p4.zoom = p4 + coord_cartesian(xlim=xbox, ylim=ybox) + xlab('') + ylab('') +
+  theme(axis.ticks.x= element_blank(), axis.text.x = element_blank(),
+        axis.ticks.y=element_blank(), axis.text.y=element_blank(),
+        legend.position='off')
+p5 = p4 + annotation_custom(ggplotGrob(p4.zoom), xmin = 1968,   # location by
+                            xmax = 1984.7,   ymin=2, ymax=95) + # trial and error
+  geom_rect(aes(xmin=min(xbox), xmax=max(xbox),
+                ymin=min(ybox), ymax=max(ybox)),
+            color=alpha('black', .25), size=.3, fill=NA)
+
+
+plot.theme = theme(legend.position=c(.9,.85), legend.direction='vertical',
+                   legend.key=element_blank(), legend.background=element_blank())
+
+p1 + plot.theme
+
+
+
+###Employment###
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "emp_rate", "Treated")]
+data_SDID <- data.frame(selected_variables)
 
 setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
 
@@ -174,3 +298,32 @@ sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
 plot(tau.hat)
 
 
+###Income###
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "income", "Treated")]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+
+
+###Hours###
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "hours", "Treated")]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
