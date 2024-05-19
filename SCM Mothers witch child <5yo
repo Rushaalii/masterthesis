@@ -266,7 +266,7 @@ gaps.plot(synth.res = synth.out,
 ######################################################
 
 control = dataprep.out$Y0plot %*% synth.out$solution.w
-control <- as.data.frame(synth.control)
+control <- as.data.frame(control)
 names(control)[names(control) == "w.weight"] <- "part_rate"
 control$YEAR <- 2006:2019
 control$eligible <- 0
@@ -300,8 +300,8 @@ plot_did <- ggplot(data = did, aes(x = YEAR, y = part_rate, color = as.factor(el
   geom_vline(xintercept = 2013, linetype = "dashed", color = "blue") + # Line indicating treatment start
   annotate("text", x = 2011, y = max(did$part_rate), label = "Pre-treatment", hjust = 1, color = "blue") + # Pre-treatment label
   annotate("text", x = 2015, y = max(did$part_rate), label = "Post-treatment", hjust = 0, color = "blue") + # Post-treatment label
-  labs(x = "Year", y = "Participation Rate", color = "Eligible (Child < 5)") +
-  ggtitle("Labor Force Participation Rate in NYC: Eligible vs Non-Eligible Mothers") +
+  labs(x = "Year", y = "Participation Rate", color = "NYC") +
+  ggtitle("Labor Force Participation Mothers with <5yo: NYC vs Donorpool") +
   theme_minimal() +
   scale_x_continuous(breaks = seq(min(did$YEAR), max(did$YEAR), by = 1))
 
