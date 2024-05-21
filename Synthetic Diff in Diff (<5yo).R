@@ -156,6 +156,9 @@ tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
 se = sqrt(vcov(tau.hat, method='placebo'))
 sprintf('point estimate: %1.2f', tau.hat)
 sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+lower_bound <- tau.hat - 1.96 * se
+upper_bound <- tau.hat + 1.96 * se
+CI <- c(lower_bound, upper_bound)
 plot(tau.hat)
 
 
