@@ -1,3 +1,6 @@
+# Synthetic Diff in Diff
+#devtools::install_github("synth-inference/synthdid")
+
 library(raster)
 library(dplyr)
 library(purrr)
@@ -11,15 +14,17 @@ library(knitr)
 library(kableExtra)
 library(xtable)
 library(openxlsx)
+library(synthdid) 
+
 
 # Remove all objects from the workspace
 rm(list = ls()) 
 
 ### SCRIPT for donorpool & LFP 
 
-setwd("/Users/rabea/Desktop/BSE/Master project/Analysis /")
+setwd("/Users/tilpommer/Documents/BSE/Term 3/Master project/Results")
 
-data <- read_csv("/Users/rabea/Desktop/BSE/Master project/Analysis /100SyntheticControl_usefor_4yo.csv.gz")
+data <- read_csv("/Users/tilpommer/Documents/BSE/Term 3/Master project/Results/100SyntheticControl_usefor_4yo.csv.gz")
 
 
 #Drop duplicates!!!
@@ -77,8 +82,8 @@ geographicdata2012$X13 <- NULL
 geographicdata2012$UPUMA <- paste0(geographicdata2012$FIPS.State.Code, "_", geographicdata2012$PUMA)
 
 # Keeping only cities with >500'000 population and >75% PUMA zone coverage
-cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 75)
-cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 75)
+cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 800000 & geographicdata2005$Percent.PUMA.Population > 75)
+cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 800000 & geographicdata2012$Percent.PUMA.Population > 75)
 
 # Keeping only cities in 2012 that had >500'000 population in year 2000 (questionable?) 
 metropolitan_cities <- unique(cities2005donorpool$Place.Name)
@@ -119,24 +124,23 @@ donorpool <- bind_rows(
 
 synthcontrol_donorpool <- donorpool %>%
   group_by(Place.Name, YEAR) %>%
-  #filter(married == 0,na.rm = TRUE) %>% #Delete/Change
   summarise(
-    married = weighted.mean(married, , w = PERWT, na.rm = TRUE),
-    white = weighted.mean(white, w = PERWT,na.rm = TRUE),
-    black = weighted.mean(black, w = PERWT,na.rm = TRUE),
-    #hispanic = weighted.mean(hispanic, na.rm = TRUE),
-    share_hsdropout = weighted.mean(hsdropout, w = PERWT,na.rm = TRUE),
-    share_hsgraduate = weighted.mean(hsgraduate, w = PERWT,na.rm = TRUE),
-    share_somecollege = weighted.mean(somecollege, w = PERWT,na.rm = TRUE),
-    share_min_bachelor = weighted.mean(min_bachelor, w = PERWT,na.rm = TRUE),
-    age = weighted.mean(AGE_MOM, w = PERWT, na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT,na.rm = TRUE),
-    emp_rate = weighted.mean(employment, w = PERWT,na.rm = TRUE),
+    married = weighted.mean(married, w = PERWT, na.rm = TRUE),
+    white = weighted.mean(white, w = PERWT, na.rm = TRUE),
+    black = weighted.mean(black, w = PERWT, na.rm = TRUE),
+    share_hsdropout = weighted.mean(hsdropout, w = PERWT, na.rm = TRUE),
+    share_hsgraduate = weighted.mean(hsgraduate, w = PERWT, na.rm = TRUE),
+    share_somecollege = weighted.mean(somecollege, w = PERWT, na.rm = TRUE),
+    share_min_bachelor = weighted.mean(min_bachelor, w = PERWT, na.rm = TRUE),
+    age = weighted.mean(AGE, w = PERWT, na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
     hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
     fulltime = weighted.mean(fulltime, w = PERWT, na.rm = TRUE),
     income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     no_children = weighted.mean(no.children, w = PERWT, na.rm = TRUE),
-    .groups = "drop"  
+    .groups = "drop"
+ 
   )
 
 
@@ -144,36 +148,11 @@ synthcontrol_donorpool <- donorpool %>%
 
 # Create treatment indicator
 synthcontrol_donorpool <- synthcontrol_donorpool %>%
-  mutate(Treated = ifelse(Place.Name == "New York city" & YEAR >= 2013, 1, 0))
+  mutate(Treated = ifelse(Place.Name == "New York city" & YEAR >= 2014, 1, 0))
 
 # Create dataset for SDID
 selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "part_rate", "Treated")]
 data_SDID <- data.frame(selected_variables)
-
-# # Testing for balanced data set
-# complete_cases <- data_SDID %>%
-#  group_by(Place.Name, YEAR) %>%
-#  summarise(n = n(), .groups = 'drop')
-# 
-# # Creating a balanced set of unit-time combinations
-# complete_panel <- expand.grid(Place.Name = unique(data_SDID$Place.Name), YEAR = unique(data_SDID$YEAR))
-# 
-# # Merging with the original data
-# data_SDID_balanced <- merge(complete_panel, data_SDID, by = c("Place.Name", "YEAR"), all = TRUE)
-# 
-# # Checking for the missing combinations (cities)
-# rows_with_na <- rowSums(is.na(data_SDID_balanced)) > 0
-# data_with_na <- data_SDID_balanced[rows_with_na, ]
-# 
-# places_to_remove <- c("Charlotte city")
-# 
-# data_SDID_filtered <- data_SDID_balanced[!data_SDID_balanced$Place.Name %in% places_to_remove, ]
-# data_SDID_unique <- distinct(data_SDID_filtered)
-
-# Synthetic Diff in Diff
-devtools::install_github("synth-inference/synthdid")
-
-library(synthdid) # loads the "synthdid" package
 
 setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
 
@@ -183,4 +162,137 @@ sprintf('point estimate: %1.2f', tau.hat)
 sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
 plot(tau.hat)
 
+lower_bound <- tau.hat - 1.96 * se
+upper_bound <- tau.hat + 1.96 * se
+CI <- c(lower_bound, upper_bound)
 
+
+#Inserting more lines of control cities
+estimate = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+
+top.controls = synthdid_controls(estimate)[1:5, , drop=FALSE]
+plot(estimate, spaghetti.units=rownames(top.controls))
+
+
+California = c('Los Angeles city', 'San Diego city', 'San Francisco city')
+spaghetti.matrices = rbind(colMeans(setup$Y[rownames(setup$Y) %in% California, ]),
+                           colMeans(setup$Y[rownames(setup$Y) %in% rownames(top.controls), ]))
+rownames(spaghetti.matrices) = c('California', 'Top-10 Control Average')
+plot(estimate, spaghetti.matrices=list(spaghetti.matrices), spaghetti.line.alpha=.4)
+
+###Control Unit Contribution Plot###
+synthdid_units_plot(estimate, units = rownames(top.controls))
+
+
+###Employment###
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "emp_rate", "Treated")]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+lower_bound <- tau.hat - 1.96 * se
+upper_bound <- tau.hat + 1.96 * se
+CI <- c(lower_bound, upper_bound)
+
+#Inserting more lines of control cities
+estimate = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+
+top.controls = synthdid_controls(estimate)[1:5, , drop=FALSE]
+plot(estimate, spaghetti.units=rownames(top.controls))
+
+###Control Unit Contribution Plot###
+synthdid_units_plot(estimate, units = rownames(top.controls))
+
+
+###Income###
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "income", "Treated")]
+selected_variables <- selected_variables[selected_variables$Place.Name!= "Detroit city",]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+lower_bound <- tau.hat - 1.96 * se
+upper_bound <- tau.hat + 1.96 * se
+CI <- c(lower_bound, upper_bound)
+
+#Inserting more lines of control cities
+estimate = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+
+top.controls = synthdid_controls(estimate)[1:5, , drop=FALSE]
+plot(estimate, spaghetti.units=rownames(top.controls))
+
+###Control Unit Contribution Plot###
+synthdid_units_plot(estimate, units = rownames(top.controls))
+
+
+###Hours###
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "hours", "Treated")]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+lower_bound <- tau.hat - 1.96 * se
+upper_bound <- tau.hat + 1.96 * se
+CI <- c(lower_bound, upper_bound)
+
+#Inserting more lines of control cities
+estimate = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+
+top.controls = synthdid_controls(estimate)[1:5, , drop=FALSE]
+plot(estimate, spaghetti.units=rownames(top.controls))
+
+###Control Unit Contribution Plot###
+synthdid_units_plot(estimate, units = rownames(top.controls))
+
+
+
+#Fulltime Share
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "fulltime", "Treated")]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+lower_bound <- tau.hat - 1.96 * se
+upper_bound <- tau.hat + 1.96 * se
+CI <- c(lower_bound, upper_bound)
+
+#Inserting more lines of control cities
+estimate = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+
+top.controls = synthdid_controls(estimate)[1:5, , drop=FALSE]
+plot(estimate, spaghetti.units=rownames(top.controls))
+
+###Control Unit Contribution Plot###
+synthdid_units_plot(estimate, units = rownames(top.controls))
