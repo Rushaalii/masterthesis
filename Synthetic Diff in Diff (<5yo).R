@@ -187,6 +187,72 @@ setup$N0
 
 
 
+###Income###
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "income", "Treated")]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+lower_bound <- tau.hat - 1.96 * se
+upper_bound <- tau.hat + 1.96 * se
+CI <- c(lower_bound, upper_bound)
+
+#Inserting more lines of control cities
+estimate = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+
+top.controls = synthdid_controls(estimate)[1:5, , drop=FALSE]
+plot(estimate, spaghetti.units=rownames(top.controls))
+
+###Control Unit Contribution Plot###
+synthdid_units_plot(estimate, units = rownames(top.controls))
+
+
+###Hours###
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "hours", "Treated")]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+lower_bound <- tau.hat - 1.96 * se
+upper_bound <- tau.hat + 1.96 * se
+CI <- c(lower_bound, upper_bound)
+
+
+#Fulltime Share
+
+# Create dataset for SDID (Labor Force Participation Rate)
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "fulltime", "Treated")]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+
+
+
+
+
 
 
 
@@ -283,50 +349,3 @@ plot.theme = theme(legend.position=c(.9,.85), legend.direction='vertical',
                    legend.key=element_blank(), legend.background=element_blank())
 
 p1 + plot.theme
-
-
-
-###Employment###
-
-# Create dataset for SDID (Labor Force Participation Rate)
-selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "emp_rate", "Treated")]
-data_SDID <- data.frame(selected_variables)
-
-setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
-
-tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
-se = sqrt(vcov(tau.hat, method='placebo'))
-sprintf('point estimate: %1.2f', tau.hat)
-sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
-plot(tau.hat)
-
-
-###Income###
-
-# Create dataset for SDID (Labor Force Participation Rate)
-selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "income", "Treated")]
-data_SDID <- data.frame(selected_variables)
-
-setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
-
-tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
-se = sqrt(vcov(tau.hat, method='placebo'))
-sprintf('point estimate: %1.2f', tau.hat)
-sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
-plot(tau.hat)
-
-
-
-###Hours###
-
-# Create dataset for SDID (Labor Force Participation Rate)
-selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "hours", "Treated")]
-data_SDID <- data.frame(selected_variables)
-
-setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
-
-tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
-se = sqrt(vcov(tau.hat, method='placebo'))
-sprintf('point estimate: %1.2f', tau.hat)
-sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
-plot(tau.hat)
