@@ -31,7 +31,18 @@ options(tigris_use_cache = TRUE)
 
 # Download PUMA data for New York State
 ny_pumas <- pumas(state = "NY", year = 2019, cb = TRUE)
-ny_pumas <- st_transform(ny_pumas, crs = 3857)  # Transform for accurate distance measurements
+nj_pumas <- pumas(state = "NJ", year = 2019, cb = TRUE)
+pa_pumas <- pumas(state = "PA", year = 2019, cb = TRUE)
+ct_pumas <- pumas(state = "CT", year = 2019, cb = TRUE)
+
+
+ny_pumas <- st_transform(ny_pumas, crs = 3857)
+nj_pumas <- st_transform(nj_pumas, crs = 3857)# Transform for accurate distance measurements
+pa_pumas <- st_transform(pa_pumas, crs = 3857)# Transform for accurate distance measurements
+ct_pumas <- st_transform(ct_pumas, crs = 3857)# Transform for accurate distance measurements
+
+
+ny_nj_pa_ct_pumas <- rbind(ny_pumas, nj_pumas, pa_pumas, ct_pumas)
 
 
 # Filter NYC PUMAs based on known codes
@@ -41,32 +52,26 @@ nyc_puma_codes <- c("03701", "03702", "03703", "03704", "03705", "03706", "03707
                     "04008", "04009", "04010", "04011", "04012", "04013", "04014", "04015", "04016", "04017",
                     "04018", "04101", "04102", "04103", "04104", "04105", "04106", "04107", "04108", "04109",
                     "04110", "04111", "04112", "04113", "04114")
-
 nyc_pumas <- ny_pumas %>% filter(PUMACE10 %in% nyc_puma_codes)
 
 # Create a 10 km buffer around NYC PUMAs
-nyc_pumas_buffered <- st_buffer(nyc_pumas, dist = 30000)
+nyc_pumas_buffered <- st_buffer(nyc_pumas, dist = 10000)
 
 # Find PUMAs that intersect the buffered area using st_intersects
-intersection_matrix <- st_intersects(nyc_pumas_buffered, ny_pumas)
+intersection_matrix <- st_intersects(nyc_pumas_buffered, ny_nj_pa_ct_pumas)
 surrounding_pumas_indices <- apply(intersection_matrix, 2, any)  # Check for any TRUE in each column
-surrounding_pumas <- ny_pumas[surrounding_pumas_indices, ]
+surrounding_pumas <- ny_nj_pa_ct_pumas[surrounding_pumas_indices, ]
 
 # Exclude NYC PUMAs from the results
 surrounding_pumas <- surrounding_pumas[!surrounding_pumas$PUMACE10 %in% nyc_puma_codes, ]
 
 # Plot results
 ggplot() +
-  geom_sf(data = ny_pumas, fill = "white", color = "black") +
+  geom_sf(data = ny_nj_pa_ct_pumas, fill = "white", color = "black") +
   geom_sf(data = nyc_pumas, fill = "blue") +
   geom_sf(data = surrounding_pumas, fill = "red") +
   theme_minimal() +
   ggtitle("NYC PUMAs and Surrounding Areas within 10 km")
-
-
-pumas_surrounding <- surrounding_pumas$PUMACE10
-nyc_pumas <- nyc_pumas$PUMACE10
-
 
 #################################################
 ### Elegible Mothers (4 y.o. children sample) ###
@@ -123,8 +128,10 @@ data <- data %>% mutate(
 ################################################################################
 # Diff-in-Diff 4yo 
 ################################################################################
+surrounding_pumas <- surrounding_pumas$PUMACE10
+nyc_pumas <- nyc_pumas$PUMACE10
 
-donorpool <- data[(data$PUMA %in% pumas_surrounding) | (data$PUMA %in% nyc_pumas),]
+donorpool <- data[(data$PUMA %in% surrounding_pumas) | (data$PUMA %in% nyc_pumas),]
 donorpool <- donorpool[donorpool$AGE != 7,]
 
 donorpool$treatment <- ifelse(donorpool$PUMA %in% nyc_pumas,1,0)
@@ -149,7 +156,7 @@ did_model <- lm(part_rate ~ treatment + time + did, data = summary)
 summary(did_model)
 
 did_results <- tidy(did_model)
-print(did_results_nyc)
+print(did_results)
 
 # Extracting and interpreting coefficients
 did_coef <- did_results %>% filter(term == "did")
@@ -168,8 +175,3 @@ plot_did <- ggplot(data = summary, aes(x = YEAR, y = part_rate, color = as.facto
 
 print(plot_did)
 print(head(summary))
-
-
-
-
-
