@@ -58,8 +58,12 @@ data$black <- ifelse (data$RACE_MOM == 2, 1, 0)
 data$INCWAGE_MOM[data$INCWAGE_MOM == 999999] <- NA
 
 data$hsdropout = ifelse(data$EDUCD_MOM <= 061, 1,0)
-data$hsgraduate = ifelse(data$EDUCD_MOM <= 064, 1,0)
-data$somecollege = ifelse(data$EDUCD_MOM <= 100, 1,0)
+data$somecollege = ifelse(data$EDUCD_MOM == 062, 1,
+                          ifelse(data$EDUC_MOM == 063, 1,
+                                 ifelse(data$EDUC_MOM == 064, 1, 0)))
+data$somecollege = ifelse(data$EDUCD_MOM == 065, 1,
+                          ifelse(data$EDUC_MOM == 071, 1,
+                                 ifelse(data$EDUC_MOM == 081, 1, 0)))
 data$min_bachelor = ifelse(data$EDUCD_MOM > 100, 1,0)
 
 
