@@ -64,8 +64,8 @@ data$INCWAGE_MOM[data$INCWAGE_MOM == 999999] <- NA
 
 
 data$hsdropout = ifelse(data$EDUCD_MOM <= 061, 1,0)
-data$hsgraduate = ifelse(data$EDUC_MOM == 63, 1,
-                         ifelse(data$EDUC_MOM == 64, 1, 0))
+data$hsgraduate <- ifelse(data$EDUCD_MOM == 63, 1,
+                          ifelse(data$EDUC_MOM == 64, 1, 0))
 data$somecollege = ifelse(data$EDUCD_MOM == 065, 1,
                           ifelse(data$EDUC_MOM == 071, 1,
                                  ifelse(data$EDUC_MOM == 081, 1, 0)))
