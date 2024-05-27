@@ -20,6 +20,7 @@ library(sf)
 library(SCtools)
 library(parallel)
 library(MSCMT)
+library(broom)
 
 #Sample Construction
 rm(list = ls()) 
