@@ -543,6 +543,21 @@ dynamic_did_coef <- dynamic_did_results %>% filter(grepl("eligible:post_", term)
 print(dynamic_did_coef)
 
 ######################################################
+# Dynamic DiD coefficients calculated for rollout period and established period. 
+######################################################
+
+did <- did %>%
+  mutate(rollout = ifelse(YEAR %in% c(2014, 2015, 2016), 1, 0))
+did <- did %>%
+  mutate(established = ifelse(YEAR %in% c(2017, 2018, 2019), 1, 0))
+did <- did %>%
+  mutate(rollout_established = rollout * established)
+
+dynamic_2period <- lm(part_rate ~ eligible * (rollout + established), data = did)
+dynamic_2period_results <- tidy(dynamic_2period)
+print(dynamic_2period_results)
+
+######################################################
 # DiD coefficients calculated for each year individually
 ######################################################
 
