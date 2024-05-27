@@ -520,12 +520,12 @@ nyc <- synthcontrol_donorpool %>%
 did <- bind_rows(control, nyc)
 row.names(did) <- NULL
 
-# Dummies == 1, otherwise 0, for each post-treatment year.
+# Dummies == 1, otherwise 0, for each post-treatment year respectively.
 for (year in 2014:2019) {
   did[[paste0("post_", year)]] <- ifelse(did$YEAR == year & did$post == 1, 1, 0)
 }
 
-# Dummies == 1, otherwise 0, for rollout and full effect periods.
+# Dummies == 1, otherwise 0, for rollout and full effect periods respectively.
 did <- did %>%
   mutate(rollout = ifelse(YEAR %in% c(2014, 2015, 2016), 1, 0))
 did <- did %>%
