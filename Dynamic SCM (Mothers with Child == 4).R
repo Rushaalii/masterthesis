@@ -502,7 +502,7 @@ abline(v=2014,lty="dotted",lwd=2)
 
 
 ######################################################
-###DiD to get estimates of synthetic Control Method###
+### DiD to get estimates of synthetic Control Method###
 ######################################################
 
 control <- as.data.frame(dataprep.out$Y0plot %*% synth.out$solution.w)
@@ -520,7 +520,20 @@ nyc <- synthcontrol_donorpool %>%
 did <- bind_rows(control, nyc)
 row.names(did) <- NULL
 
-# DiD
+# Dummies == 1, otherwise 0, for each post-treatment year.
+for (year in 2014:2019) {
+  did[[paste0("post_", year)]] <- ifelse(did$YEAR == year & did$post == 1, 1, 0)
+}
+
+# Dummies == 1, otherwise 0, for rollout and full effect periods.
+did <- did %>%
+  mutate(rollout = ifelse(YEAR %in% c(2014, 2015, 2016), 1, 0))
+did <- did %>%
+  mutate(established = ifelse(YEAR %in% c(2017, 2018, 2019), 1, 0))
+did <- did %>%
+  mutate(rollout_established = rollout * established)
+
+# DiD estimation.
 did_model <- lm(part_rate ~ eligible + post + treat_post, data = did)
 did_results <- broom::tidy(did_model)
 print(did_results)
@@ -531,13 +544,8 @@ print(did_coef)
 # Dynamic SCM Model
 ######################################################
 
-for (year in 2014:2019) {
-  did[[paste0("post_", year)]] <- ifelse(did$YEAR == year & did$post == 1, 1, 0)
-}
-
 dynamic_did_model <- lm(part_rate ~ eligible * (post_2014 + post_2015 + post_2016 + post_2017 + post_2018 + post_2019), data = did)
 
-# Summarizing the results
 dynamic_did_results <- tidy(dynamic_did_model)
 print(dynamic_did_results)
 dynamic_did_coef <- dynamic_did_results %>% filter(grepl("eligible:post_", term))
@@ -547,29 +555,14 @@ print(dynamic_did_coef)
 # Dynamic DiD coefficients calculated for rollout period and established period. 
 ######################################################
 
-did <- did %>%
-  mutate(rollout = ifelse(YEAR %in% c(2014, 2015, 2016), 1, 0))
-did <- did %>%
-  mutate(established = ifelse(YEAR %in% c(2017, 2018, 2019), 1, 0))
-did <- did %>%
-  mutate(rollout_established = rollout * established)
-
 dynamic_2period <- lm(part_rate ~ eligible * (rollout + established), data = did)
+
 dynamic_2period_results <- tidy(dynamic_2period)
 print(dynamic_2period_results)
 
 ######################################################
-# DiD coefficients calculated for each year individually
+# Plots
 ######################################################
-
-
-dynamic_2015 <- lm(part_rate ~ eligible + post_2019 + eligible * post_2019, data = did)
-dynamic_2015_results <- tidy(dynamic_2015)
-print(dynamic_2015_results)
-dynamic_did_coef_2015 <- dynamic_2015_results %>% filter(grepl("eligible:post_2019", term))
-print(dynamic_did_coef_2015)
-
-
 
 plot_dynamic_did <- ggplot(data = dynamic_did_coef, aes(x = as.numeric(gsub("post_", "", term)), y = estimate)) +
   geom_point() +
