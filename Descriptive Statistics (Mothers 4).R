@@ -11,17 +11,24 @@ library(knitr)
 library(kableExtra)
 library(xtable)
 library(openxlsx)
+library(tigris)
+library(tidycensus)
+library(stringr)
+library(ipumsr)
+library(survey)
+library(sf)
+library(SCtools)
+library(parallel)
+library(MSCMT)
 
 
-# Remove all objects from the workspace
+
+#Sample Construction
 rm(list = ls()) 
 
-
 setwd("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs")
-# Reading the compressed CSV file directly into R without explicitly unzipping
-#Only downloaded data until 2019 due to impact of COVID
 
-data <- read_csv("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/100SyntheticControl_reduced.csv.gz")
+data <- read_csv("/Users/tilpommer/Documents/BSE/Term 3/Master project/Results/100SyntheticControl_usefor_4yo.csv.gz")
 
 ################################################################################
 ###Statistics Women with children at age 4###
@@ -51,10 +58,16 @@ data$white <- ifelse (data$RACE_MOM == 1, 1, 0)
 data$black <- ifelse (data$RACE_MOM == 2, 1, 0)
 data$INCWAGE_MOM[data$INCWAGE_MOM == 999999] <- NA
 
-data$hsdropout = ifelse(data$EDUCD_MOM <= 061, 1,0)
-data$hsgraduate = ifelse(data$EDUCD_MOM <= 064, 1,0)
-data$somecollege = ifelse(data$EDUCD_MOM <= 100, 1,0)
+data$highschool = ifelse(data$EDUCD_MOM <= 061, 1,
+                         ifelse(data$EDUCD_MOM <= 061, 1,
+                                ifelse(data$EDUCD_MOM == 062, 1,
+                                       ifelse(data$EDUC_MOM == 063, 1,
+                                              ifelse(data$EDUC_MOM == 064, 1, 0)))))
+data$somecollege = ifelse(data$EDUCD_MOM == 065, 1,
+                          ifelse(data$EDUC_MOM == 071, 1,
+                                 ifelse(data$EDUC_MOM == 081, 1, 0)))
 data$min_bachelor = ifelse(data$EDUCD_MOM > 100, 1,0)
+
 
 
 #Income brackets: Below poverty treshold, 100-300% of poverty treshold, 300% or more of poverty treshold (Household Income!)
@@ -75,19 +88,24 @@ data <- data%>% mutate(
   )
 )
 
+################################################################################
+# Creating Donor Pool
+################################################################################
+
 # Data Loading and Cleaning
-geographicdata2012 <- read.xlsx("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/New York City/2012-2021 PUMAS Cities.xlsx", sheet = 1)
-geographicdata2012$PUMA <- sub("^0", "", geographicdata2012$PUMA)
+geographicdata2005 <- read.xlsx("/Users/tilpommer/Documents/BSE/Term 3/Master project/Results/2005-2011 PUMAS Citites.xlsx", sheet = 1)
+geographicdata2005$UPUMA <- paste0(geographicdata2005$FIPS.State.Code, "_", geographicdata2005$PUMA)
+
+geographicdata2012 <- read.xlsx("/Users/tilpommer/Documents/BSE/Term 3/Master project/Results/2012-2021 PUMAS Cities.xlsx", sheet = 1)
 geographicdata2012$Place.Name <- ifelse(geographicdata2012$Place.Name == "Nashville-Davidson metropolitan government (balance)", "Nashville-Davidson (balance)", geographicdata2012$Place.Name)
 geographicdata2012$X13 <- NULL
-geographicdata2005 <- read.xlsx("/Users/tilpommer/Documents/BSE/Term 3/Master project/Synthetic Control/Preschool: PreK Programs/New York City/2005-2011 PUMAS Citites.xlsx", sheet = 1)
-geographicdata2005$PUMA <- sub("^0", "", geographicdata2005$PUMA)
+geographicdata2012$UPUMA <- paste0(geographicdata2012$FIPS.State.Code, "_", geographicdata2012$PUMA)
 
 # Keeping only cities with >500'000 population and >75% PUMA zone coverage
 cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 75)
 cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 75)
 
-# Keeping only cities in 2012 that had >500'000 population in year 2000.
+# Keeping only cities in 2012 that had >500'000 population in year 2000 (questionable?) 
 metropolitan_cities <- unique(cities2005donorpool$Place.Name)
 cities2012donorpool <- subset(cities2012donorpool, Place.Name %in% metropolitan_cities)
 
@@ -97,24 +115,34 @@ cities2005donorpool <- subset(cities2005donorpool, !(Place.Name %in% major_preK)
 cities2012donorpool <- subset(cities2012donorpool, !(Place.Name %in% major_preK))
 
 # Extract PUMA codes
-pumas2005donorpool <- cities2005donorpool$PUMA
-pumas2012donorpool <- cities2012donorpool$PUMA
-donorpool <- data[(data$PUMA %in% pumas2005donorpool & data$YEAR < 2012) | (data$PUMA %in% pumas2012donorpool & data$YEAR >= 2012),]
-
-#Donorpool
-donorpool$PUMA <- as.character(donorpool$PUMA)
-cities2005donorpool$PUMA <- as.character(cities2005donorpool$PUMA)
+upumas2005donorpool <- cities2005donorpool$UPUMA
+upumas2012donorpool <- cities2012donorpool$UPUMA
+donorpool <- data[(data$UPUMA %in% upumas2005donorpool & data$YEAR < 2012) | (data$UPUMA %in% upumas2012donorpool & data$YEAR >= 2012),]
 
 #Add Cities 
 donorpool <- bind_rows(
   donorpool %>% 
     filter(YEAR <= 2011) %>%
-    left_join(dplyr::select(cities2005donorpool, PUMA, Place.Name), by = "PUMA", relationship = "many-to-many"),
+    left_join(dplyr::select(cities2005donorpool, UPUMA, Place.Name), by = "UPUMA"),
   
   donorpool %>% 
     filter(YEAR >= 2012) %>%
-    left_join(dplyr::select(cities2012donorpool, PUMA, Place.Name), by = "PUMA", relationship = "many-to-many")
+    left_join(dplyr::select(cities2012donorpool, UPUMA, Place.Name), by = "UPUMA")
 )
+
+#Exclude cities that for any year have less than 40 units (Optional)
+donorpool <- donorpool %>%
+  group_by(Place.Name, YEAR) %>%
+  filter(n() >= 50) %>%
+  ungroup()
+
+all_years <- 2006:2019
+donorpool <- donorpool %>%
+  group_by(Place.Name) %>%
+  # Ensure the city has data for each year in the range
+  filter(all(all_years %in% unique(YEAR))) %>%
+  ungroup()
+
 
 donorpool$nyc <- ifelse(donorpool$Place.Name == "New York city",1,0)
 
@@ -134,11 +162,11 @@ combined_data <- combined_data %>%
   filter(combined_data$treatment == 1) %>%
   group_by(YEAR, region) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 
@@ -147,11 +175,11 @@ combined_data <- combined_data %>%
 nyc_elegebility <- nyc %>%
   group_by(YEAR,treatment) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 nyc_elegebility$treatment <- as.factor(nyc_elegebility$treatment)
@@ -159,58 +187,14 @@ nyc_elegebility$treatment <- as.factor(nyc_elegebility$treatment)
 not_nyc_elegebility <- not_nyc %>%
   group_by(YEAR,treatment) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 not_nyc_elegebility$treatment <- as.factor(not_nyc_elegebility$treatment)
-
-
-#Differences-in-Differences#
-### Only Difference between elegible and non-elegible WOMEN in NYC vs not NYC (Donorpool) ###
-# Create a wide format data frame
-nyc_differences <- nyc_elegebility %>%
-  pivot_wider(
-    names_from = treatment,  # Create columns based on child5
-    values_from = c(emp_rate, hours, fulltime, part_rate, income),  # Extract the required metrics
-    names_prefix = "child4_"
-  )
-
-# Compute differences
-nyc_differences <- nyc_differences %>%
-  mutate(
-    emp_rate_diff = emp_rate_child4_1 - emp_rate_child4_0,
-    hours_diff = hours_child4_1 - hours_child4_0,
-    fulltime_diff = fulltime_child4_1 - fulltime_child4_0,
-    part_rate_diff = part_rate_child4_1 - part_rate_child4_0,
-    income_diff = income_child4_1 - income_child4_0,
-    dataset = "NYC"
-  )
-
-
-not_nyc_differences <- not_nyc_elegebility %>%
-  pivot_wider(
-    names_from = treatment,  # Create columns based on child5
-    values_from = c(emp_rate, hours, fulltime, part_rate, income),  # Extract the required metrics
-    names_prefix = "child4_"
-  )
-
-# Compute differences
-not_nyc_differences <- not_nyc_differences %>%
-  mutate(
-    emp_rate_diff = emp_rate_child4_1 - emp_rate_child4_0,
-    hours_diff = hours_child4_1 - hours_child4_0,
-    fulltime_diff = fulltime_child4_1 - fulltime_child4_0,
-    part_rate_diff = part_rate_child4_1 - part_rate_child4_0,
-    income_diff = income_child4_1 - income_child4_0,
-    dataset = "Average Donorpool"
-  )
-
-differences_nyc_vs_nonnyc <- bind_rows(nyc_differences, not_nyc_differences)
-
 
 
 #By race
@@ -218,11 +202,11 @@ nyc_race <- nyc %>%
   filter(treatment == 1) %>%
   group_by(YEAR,race) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 
@@ -230,11 +214,11 @@ donorpool_race <- donorpool %>%
   filter(treatment == 1) %>%
   group_by(YEAR,race,nyc) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 
@@ -244,11 +228,11 @@ nyc_education <- nyc %>%
   filter(treatment == 1) %>%
   group_by(YEAR, education) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 
@@ -256,11 +240,11 @@ donorpool_education <- donorpool %>%
   filter(treatment == 1) %>%
   group_by(YEAR, education, nyc) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 
@@ -269,11 +253,11 @@ nyc_hhincome <- nyc %>%
   filter(treatment == 1) %>%
   group_by(YEAR, hhincome) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 
@@ -282,11 +266,11 @@ donorpool_hhincome <- donorpool %>%
   filter(treatment == 1) %>%
   group_by(YEAR, hhincome, nyc) %>%
   summarise(
-    emp_rate = weighted.mean(employment, w = PERWT_MOM, na.rm = TRUE),
-    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT_MOM[EMPSTAT_MOM == 1], na.rm = TRUE),
-    part_rate = weighted.mean(laborforce, w = PERWT_MOM, na.rm = TRUE),
-    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT_MOM[INCWAGE_MOM > 0], na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
     .groups = 'drop'  # If using dplyr >= 1.0.0, drop grouping by default after summarise
   )
 
@@ -384,58 +368,6 @@ plot(plot_fulltime)
 grid.arrange(plot_part_rate, plot_emp_rate, plot_inc, plot_hours,ncol=2)
 
 
-###Differences NYC vs Not NYC###
-plot_part_rate <- ggplot(data = differences_nyc_vs_nonnyc) +
-  geom_line(aes(x = YEAR, y = part_rate_diff, color = dataset)) +  # Use 'region' to differentiate the lines
-  labs(x = "Year", y = "Participation Rate") +
-  ggtitle("Participation Difference Mothers 4y.o. vs 7y.o.") +
-  theme_minimal() +
-  scale_x_continuous(breaks = seq(min(differences_nyc_vs_nonnyc$YEAR), max(differences_nyc_vs_nonnyc$YEAR), by = 1))
-print(plot_part_rate)
-
-plot_emp_rate <- ggplot(data = differences_nyc_vs_nonnyc) +
-  geom_line(aes(x = YEAR, y = emp_rate_diff, color = dataset)) +
-  labs(x = "Year", y = "") +
-  ggtitle("Employment Difference Mothers 4y.o. vs 7y.o.") +
-  theme_minimal() +
-  scale_x_continuous(breaks = seq(min(differences_nyc_vs_nonnyc$YEAR), max(differences_nyc_vs_nonnyc$YEAR), by = 1))
-plot(plot_emp_rate)
-
-plot_inc <- ggplot(data = differences_nyc_vs_nonnyc) +
-  geom_line(aes(x = YEAR, y = income_diff, color = dataset)) +
-  labs(x = "Year", y = "") +
-  ggtitle("Wage Difference Employed Mothers 4y.o. vs 7y.o.") +
-  theme_minimal() +
-  scale_x_continuous(breaks = seq(min(differences_nyc_vs_nonnyc$YEAR), max(differences_nyc_vs_nonnyc$YEAR), by = 1))
-plot(plot_inc)
-
-plot_hours <- ggplot(data = differences_nyc_vs_nonnyc) +
-  geom_line(aes(x = YEAR, y = hours_diff, color = dataset)) +
-  labs(x = "Year", y = "") +
-  ggtitle("Hours Worked of Employed Mothers 4y.o. vs 7y.o.") +
-  theme_minimal() +
-  scale_x_continuous(breaks = seq(min(differences_nyc_vs_nonnyc$YEAR), max(differences_nyc_vs_nonnyc$YEAR), by = 1))
-plot(plot_hours)
-
-plot_fulltime <- ggplot(data = differences_nyc_vs_nonnyc) +
-  geom_line(aes(x = YEAR, y = fulltime_diff, color = dataset)) +
-  labs(x = "Year", y = "") +
-  ggtitle("Fulltime Share of Employed Mothers 4y.o. vs 7y.o.") +
-  theme_minimal() +
-  scale_x_continuous(breaks = seq(min(differences_nyc_vs_nonnyc$YEAR), max(differences_nyc_vs_nonnyc$YEAR), by = 1))
-plot(plot_fulltime)
-
-grid.arrange(plot_part_rate, plot_emp_rate, plot_inc, plot_hours,ncol=2)
-
-
-
-
-
-
-
-
-
-
 ###Race within NYC###
 nyc_race$race <- factor(nyc_race$race, levels = c(1, 2, 3), labels = c("White", "Black", "Other"))
 
@@ -486,12 +418,6 @@ grid.arrange(plot_part_rate_race, plot_emp_rate_race, plot_inc_race, plot_hours_
 donorpool_race$race <- factor(donorpool_race$race, levels = c(1, 2, 3), labels = c("White", "Black", "Other"))
 
 
-#
-#
-#
-
-
-
 ###Education within NYC###
 nyc_education$education <- factor(nyc_education$education, levels = c(1, 2, 3), labels = c("Highschool Dropout", "Highschool Graduate", "College"))
 
@@ -538,7 +464,6 @@ plot_fulltime_education <- ggplot(data = nyc_education) +
 plot(plot_fulltime_education)
 
 grid.arrange(plot_part_rate_education, plot_emp_rate_education, plot_inc_education, plot_hours_education,ncol=2)
-
 
 
 ###Education NYC vs donorpool###
