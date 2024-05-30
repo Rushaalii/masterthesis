@@ -57,14 +57,16 @@ data$white <- ifelse (data$RACE_MOM == 1, 1, 0)
 data$black <- ifelse (data$RACE_MOM == 2, 1, 0)
 data$INCWAGE_MOM[data$INCWAGE_MOM == 999999] <- NA
 
-data$hsdropout = ifelse(data$EDUCD_MOM <= 061, 1,0)
-data$somecollege = ifelse(data$EDUCD_MOM == 062, 1,
-                          ifelse(data$EDUC_MOM == 063, 1,
-                                 ifelse(data$EDUC_MOM == 064, 1, 0)))
+data$highschool = ifelse(data$EDUCD_MOM <= 061, 1,
+                         ifelse(data$EDUCD_MOM <= 061, 1,
+                                ifelse(data$EDUCD_MOM == 062, 1,
+                                       ifelse(data$EDUC_MOM == 063, 1,
+                                              ifelse(data$EDUC_MOM == 064, 1, 0)))))
 data$somecollege = ifelse(data$EDUCD_MOM == 065, 1,
                           ifelse(data$EDUC_MOM == 071, 1,
                                  ifelse(data$EDUC_MOM == 081, 1, 0)))
 data$min_bachelor = ifelse(data$EDUCD_MOM > 100, 1,0)
+
 
 
 #Income brackets: Below poverty treshold, 100-300% of poverty treshold, 300% or more of poverty treshold (Household Income!)
@@ -86,8 +88,8 @@ geographicdata2012$X13 <- NULL
 geographicdata2012$UPUMA <- paste0(geographicdata2012$FIPS.State.Code, "_", geographicdata2012$PUMA)
 
 # Keeping only cities with >500'000 population and >75% PUMA zone coverage
-cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 800000 & geographicdata2005$Percent.PUMA.Population > 75)
-cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 800000 & geographicdata2012$Percent.PUMA.Population > 75)
+cities2005donorpool <- subset(geographicdata2005, geographicdata2005$Place.2000.Population > 500000 & geographicdata2005$Percent.PUMA.Population > 75)
+cities2012donorpool <- subset(geographicdata2012, geographicdata2012$Place.2010.Population > 500000 & geographicdata2012$Percent.PUMA.Population > 75)
 
 # Keeping only cities in 2012 that had >500'000 population in year 2000 (questionable?) 
 metropolitan_cities <- unique(cities2005donorpool$Place.Name)
@@ -114,6 +116,18 @@ donorpool <- bind_rows(
     left_join(dplyr::select(cities2012donorpool, UPUMA, Place.Name), by = "UPUMA")
 )
 
+# #Exclude cities that for any year have less than 40 units (Optional)
+donorpool <- donorpool %>%
+  group_by(Place.Name, YEAR) %>%
+  filter(n() >= 50) %>%
+  ungroup()
+
+all_years <- 2005:2019
+donorpool <- donorpool %>%
+  group_by(Place.Name) %>%
+  # Ensure the city has data for each year in the range
+  filter(all(all_years %in% unique(YEAR))) %>%
+  ungroup()
 
 ################################################################################
 # Labour Force Participation Rate
@@ -124,16 +138,13 @@ donorpool <- bind_rows(
 # summary(model1)
 
 #Create necessary variables: 
-#Shares by cities 
-
 synthcontrol_donorpool <- donorpool %>%
   group_by(Place.Name, YEAR) %>%
   summarise(
     married = weighted.mean(married, w = PERWT, na.rm = TRUE),
     white = weighted.mean(white, w = PERWT, na.rm = TRUE),
     black = weighted.mean(black, w = PERWT, na.rm = TRUE),
-    share_hsdropout = weighted.mean(hsdropout, w = PERWT, na.rm = TRUE),
-    share_hsgraduate = weighted.mean(hsgraduate, w = PERWT, na.rm = TRUE),
+    share_highschool = weighted.mean(highschool, w = PERWT, na.rm = TRUE),
     share_somecollege = weighted.mean(somecollege, w = PERWT, na.rm = TRUE),
     share_min_bachelor = weighted.mean(min_bachelor, w = PERWT, na.rm = TRUE),
     age = weighted.mean(AGE, w = PERWT, na.rm = TRUE),
@@ -151,6 +162,10 @@ synthcontrol_donorpool <- donorpool %>%
 ########### Script for Synthetic Diff in Diff ############
 
 # Create treatment indicator
+# synthcontrol_donorpool <- synthcontrol_donorpool[synthcontrol_donorpool$YEAR < 2014 | synthcontrol_donorpool$YEAR == 2019,]
+# 
+# synthcontrol_donorpool$YEAR[synthcontrol_donorpool$YEAR == 2019] <- 2014
+
 synthcontrol_donorpool <- synthcontrol_donorpool %>%
   mutate(Treated = ifelse(Place.Name == "New York city" & YEAR >= 2014, 1, 0))
 
@@ -163,13 +178,12 @@ setup = panel.matrices(data_SDID) # converts data set from panel to matrix forma
 tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
 se = sqrt(vcov(tau.hat, method='placebo'))
 sprintf('point estimate: %1.2f', tau.hat)
-sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+sprintf('90%% CI (%1.2f, %1.2f)', tau.hat - 1.65 * se, tau.hat + 1.65 * se)
 plot(tau.hat)
 
-lower_bound <- tau.hat - 1.96 * se
-upper_bound <- tau.hat + 1.96 * se
+lower_bound <- tau.hat - 1.65 * se
+upper_bound <- tau.hat + 1.65 * se
 CI <- c(lower_bound, upper_bound)
-
 
 #Inserting more lines of control cities
 estimate = synthdid_estimate(setup$Y, setup$N0, setup$T0)
@@ -186,6 +200,60 @@ plot(estimate, spaghetti.matrices=list(spaghetti.matrices), spaghetti.line.alpha
 
 ###Control Unit Contribution Plot###
 synthdid_units_plot(estimate, units = rownames(top.controls))
+ 
+synthdid_placebo_plot(estimate, overlay = TRUE, treated.fraction = NULL)
+
+
+setup$Y
+setup$N0
+setup$T0
+setup$W
+
+
+synthdid_plot(
+  estimate,
+  treated.name = "New York City",
+  control.name = "Synthetic New York City",
+  spaghetti.units = c(),
+  spaghetti.matrices = NULL,
+  overlay = 0,
+  lambda.plot.scale = 3,
+  trajectory.linetype = 1,
+  effect.curvature = 0.3,
+  line.width = 0.5,
+  guide.linetype = 2,
+  point.size = 1,
+  trajectory.alpha = 0.5,
+  diagram.alpha = 0.95,
+  effect.alpha = 0.2,
+  onset.alpha = 0.5,
+  ci.alpha = 0.3,
+  spaghetti.line.width = 0.9,
+  spaghetti.label.size = 2,
+  spaghetti.line.alpha = 0.3,
+  spaghetti.label.alpha = 0.5,
+  se.method = "placebo",
+  alpha.multiplier = NULL
+)
+
+
+
+tau.sc   = sc_estimate(setup$Y, setup$N0, setup$T0)
+tau.did  = did_estimate(setup$Y, setup$N0, setup$T0)
+estimates = list(tau.did, tau.sc, tau.hat)
+names(estimates) = c('Diff-in-Diff', 'Synthetic Control', 'Synthetic Diff-in-Diff')
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ###Employment###
@@ -300,3 +368,54 @@ plot(estimate, spaghetti.units=rownames(top.controls))
 
 ###Control Unit Contribution Plot###
 synthdid_units_plot(estimate, units = rownames(top.controls))
+
+
+
+
+
+### Heterogeneities ###
+
+#Create necessary variables: 
+synthcontrol_donorpool <- donorpool %>%
+  filter(married == 1) %>%
+  group_by(Place.Name, YEAR) %>%
+  summarise(
+    white = weighted.mean(white, w = PERWT, na.rm = TRUE),
+    black = weighted.mean(black, w = PERWT, na.rm = TRUE),
+    share_hsdropout = weighted.mean(hsdropout, w = PERWT, na.rm = TRUE),
+    share_hsgraduate = weighted.mean(hsgraduate, w = PERWT, na.rm = TRUE),
+    share_somecollege = weighted.mean(somecollege, w = PERWT, na.rm = TRUE),
+    share_min_bachelor = weighted.mean(min_bachelor, w = PERWT, na.rm = TRUE),
+    age = weighted.mean(AGE, w = PERWT, na.rm = TRUE),
+    part_rate = weighted.mean(laborforce, w = PERWT, na.rm = TRUE),
+    emp_rate = weighted.mean(employment, w = PERWT, na.rm = TRUE),
+    hours = weighted.mean(UHRSWORK_MOM[EMPSTAT_MOM == 1], w = PERWT[EMPSTAT_MOM == 1], na.rm = TRUE),
+    fulltime = weighted.mean(fulltime, w = PERWT, na.rm = TRUE),
+    income = weighted.mean(INCWAGE_MOM[INCWAGE_MOM > 0], w = PERWT[INCWAGE_MOM > 0], na.rm = TRUE),
+    no_children = weighted.mean(no.children, w = PERWT, na.rm = TRUE),
+    .groups = "drop"
+    )
+
+
+synthcontrol_donorpool <- synthcontrol_donorpool %>%
+  mutate(Treated = ifelse(Place.Name == "New York city" & YEAR >= 2014, 1, 0))
+
+# Create dataset for SDID
+selected_variables <- synthcontrol_donorpool[, c("Place.Name", "YEAR", "part_rate", "Treated")]
+data_SDID <- data.frame(selected_variables)
+
+setup = panel.matrices(data_SDID) # converts data set from panel to matrix format required by synthdid estimators
+
+tau.hat = synthdid_estimate(setup$Y, setup$N0, setup$T0)
+se = sqrt(vcov(tau.hat, method='placebo'))
+sprintf('point estimate: %1.2f', tau.hat)
+sprintf('95%% CI (%1.2f, %1.2f)', tau.hat - 1.96 * se, tau.hat + 1.96 * se)
+plot(tau.hat)
+
+lower_bound <- tau.hat - 1.96 * se
+upper_bound <- tau.hat + 1.96 * se
+CI <- c(lower_bound, upper_bound)
+
+
+
+
