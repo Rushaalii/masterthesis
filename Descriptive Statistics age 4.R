@@ -5,9 +5,9 @@ library(ggplot2)
 library(readr)
 library(openxlsx)
 
-setwd("C:/Users/rusha/Downloads")
+setwd("C:/Users/ru/Downloads")
 
-data <- read_csv("C:/Users/rusha/Downloads/100SyntheticControl_usefor_4yo.csv.gz.csv.gz")
+data <- read_csv("C:/Users/ru/Downloads/100SyntheticControl_usefor_4yo.csv.gz.csv.gz")
 
 # Data preparation
 data <- data %>%
